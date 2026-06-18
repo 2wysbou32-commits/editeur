@@ -99,9 +99,21 @@
     <input type="file" id="file-input" accept="image/*,application/pdf" style="display:none">
     <button class="btn primary" id="upload-btn">📂 Charger un fichier</button>
     <div class="sep"></div>
-    <button class="btn secondary" id="add-btn" disabled>+ Ajouter une étiquette</button>
-    <button class="btn secondary" id="export-btn" disabled>⬇ Exporter en PDF</button>
+    <button class="btn secondary" id="add-btn" disabled>+ Ajouter une étiquette (A)</button>
+    <button class="btn secondary" id="undo-btn" disabled title="Annuler (Ctrl+Z)">↩ Annuler</button>
+    <select id="font-size-select" disabled style="border:1px solid var(--teal-mid);border-radius:6px;padding:6px 8px;font-size:12px;color:var(--text);background:white;cursor:pointer;">
+      <option value="11">Petit</option>
+      <option value="13" selected>Moyen</option>
+      <option value="16">Grand</option>
+    </select>
+    <button class="btn secondary" id="terms-btn" disabled>Termes anatomiques</button>
     <div class="sep"></div>
+    <button class="btn secondary" id="export-btn" disabled>Exporter en PDF</button>
+    <button class="btn secondary" id="save-btn" disabled>💾 Sauvegarder</button>
+    <input type="file" id="load-input" accept=".json" style="display:none">
+    <button class="btn secondary" id="load-btn">📁 Charger session</button>
+    <div class="sep"></div>
+  </div>
     <div class="page-nav" id="page-nav" style="display:none">
       <button class="btn secondary" id="prev-page">‹</button>
       <span id="page-label">Page 1 / 1</span>
@@ -139,6 +151,10 @@
   let labels = [];
   let placing = false;
   let idCounter = 0;
+  function saveHistory() { history.push(JSON.stringify(labels)); if (history.length > 50) history.shift(); }
+  let history = [];
+  let labelFontSize = 13;
+  const TERMS = ['Aorte','Artère carotide','Artère fémorale','Artère radiale','Artère ulnaire','Cerveau','Cervelet','Côlon ascendant','Côlon descendant','Côlon sigmoïde','Diaphragme','Duodénum','Estomac','Fémur','Fibula','Foie','Humérus','Intestin grêle','Jéjunum','Ligament croisé antérieur','Ligament croisé postérieur','Lobe frontal','Lobe occipital','Lobe pariétal','Lobe temporal','Moelle épinière','Nerf cubital','Nerf médian','Nerf radial','Nerf sciatique','Oesophage','Os iliaque','Pancréas','Patella','Péroné','Processus xyphoïde','Pubis','Radius','Rate','Rectum','Rein gauche','Rein droit','Sacrum','Sternum','Tibia','Trachée','Ulna','Uretère','Utérus','Veine cave inférieure','Veine cave supérieure','Vésicule biliaire','Vessie'];
   let pdfDoc = null;
   let pdfPageNum = 1;
   let pagesData = {};
@@ -248,11 +264,13 @@
     const px = (e.clientX - rect.left) / rect.width * 100;
     const py = (e.clientY - rect.top) / rect.height * 100;
     const id = 'l' + (idCounter++);
+    saveHistory();
     labels.push({
       id,
       tx: clamp(px), ty: clamp(py),
       lx: clamp(px - 15), ly: clamp(py - 8),
-      text: 'Nouvelle étiquette'
+      text: 'Nouvelle étiquette',
+      fontSize: labelFontSize
     });
     placing = false;
     wrap.classList.remove('placing');
@@ -305,6 +323,7 @@
 
     const textEl = document.createElement('div');
     textEl.className = 'label-text';
+    if (item.fontSize) textEl.style.fontSize = item.fontSize + 'px';
     textEl.contentEditable = 'true';
     textEl.textContent = item.text;
     box.appendChild(textEl);
@@ -358,6 +377,7 @@
 
     del.addEventListener('click', e => {
       e.stopPropagation();
+      saveHistory();
       labels = labels.filter(l => l.id !== item.id);
       box.remove(); dot.remove();
       const path = svg.querySelector('#line-' + item.id);
@@ -589,6 +609,83 @@
   });
 
   window.addEventListener('resize', () => labels.forEach(item => item._updateLine && item._updateLine()));
+
+  // Raccourcis clavier
+  document.addEventListener('keydown', e => {
+    if (e.target.isContentEditable || e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+    if (e.key === 'a' || e.key === 'A') { if (!addBtn.disabled) addBtn.click(); }
+    if (e.key === 'Escape') { placing = false; wrap.classList.remove('placing'); addBtn.classList.remove('active'); addBtn.textContent = '+ Ajouter une étiquette (A)'; }
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); if (history.length) { labels = JSON.parse(history.pop()); renderAll(); } }
+  });
+
+  // Taille police
+  const fontSizeSelect = document.getElementById('font-size-select');
+  fontSizeSelect.addEventListener('change', () => { labelFontSize = parseInt(fontSizeSelect.value); });
+
+  // Termes anatomiques
+  const termsBtn = document.getElementById('terms-btn');
+  const termsModal = document.createElement('div');
+  termsModal.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:1000;align-items:center;justify-content:center;';
+  termsModal.innerHTML = '<div style="background:white;border-radius:12px;padding:1.5rem;max-width:500px;width:90%;max-height:70vh;overflow-y:auto;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;"><b style="font-size:15px;">Termes anatomiques</b><span id="terms-close" style="cursor:pointer;font-size:20px;color:#999;">✕</span></div><div id="terms-list" style="display:flex;flex-wrap:wrap;gap:8px;"></div></div>';
+  document.body.appendChild(termsModal);
+  const termsList = termsModal.querySelector('#terms-list');
+  TERMS.forEach(t => {
+    const btn = document.createElement('button');
+    btn.textContent = t;
+    btn.style.cssText = 'border:1px solid var(--teal-mid);background:var(--teal-light);color:var(--teal-dark);border-radius:20px;padding:5px 12px;font-size:12px;cursor:pointer;';
+    btn.addEventListener('click', () => {
+      saveHistory();
+      const id = 'l' + (idCounter++);
+      labels.push({ id, tx: 50, ty: 50, lx: 5, ly: 45, text: t, fontSize: labelFontSize });
+      renderAll(); termsModal.style.display = 'none';
+    });
+    termsList.appendChild(btn);
+  });
+  termsModal.querySelector('#terms-close').addEventListener('click', () => termsModal.style.display = 'none');
+  termsBtn.addEventListener('click', () => { termsModal.style.display = 'flex'; });
+
+  // Undo bouton
+  const undoBtn = document.getElementById('undo-btn');
+  undoBtn.addEventListener('click', () => { if (history.length) { labels = JSON.parse(history.pop()); renderAll(); } });
+
+  // Sauvegarder session JSON
+  const saveBtn = document.getElementById('save-btn');
+  saveBtn.addEventListener('click', () => {
+    const data = JSON.stringify({ labels, pdfPageNum, pagesData }, null, 2);
+    const a = document.createElement('a');
+    a.href = 'data:application/json,' + encodeURIComponent(data);
+    a.download = 'session-masterpass.json';
+    a.click();
+  });
+
+  // Charger session JSON
+  const loadBtn = document.getElementById('load-btn');
+  const loadInput = document.getElementById('load-input');
+  loadBtn.addEventListener('click', () => loadInput.click());
+  loadInput.addEventListener('change', e => {
+    const f = e.target.files[0]; if (!f) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        if (data.pagesData) pagesData = data.pagesData;
+        if (data.pdfPageNum) pdfPageNum = data.pdfPageNum;
+        labels = data.labels || [];
+        renderAll();
+      } catch { alert('Fichier de session invalide.'); }
+    };
+    reader.readAsText(f);
+  });
+
+  // Activer les nouveaux boutons quand image chargee
+  const _origOnBgReady = onBackgroundReady;
+  function onBackgroundReady() {
+    _origOnBgReady();
+    undoBtn.disabled = false;
+    fontSizeSelect.disabled = false;
+    termsBtn.disabled = false;
+    saveBtn.disabled = false;
+  }
 </script>
 </body>
 </html>
