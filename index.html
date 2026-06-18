@@ -331,9 +331,33 @@
     textEl.contentEditable = 'true';
     textEl.textContent = item.text;
     box.appendChild(textEl);
-    textEl.addEventListener('input', () => { item.text = textEl.textContent; updateLine(); });
-    textEl.addEventListener('blur', () => { item.text = textEl.textContent.trim() || 'Étiquette'; textEl.textContent = item.text; });
-    textEl.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); textEl.blur(); } });
+    // Bulle d'autocomplétion
+    const suggest = document.createElement('div');
+    suggest.style.cssText = 'display:none;position:absolute;top:100%;left:0;background:white;border:1px solid #cce8ec;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.1);z-index:500;min-width:180px;max-height:160px;overflow-y:auto;';
+    box.appendChild(suggest);
+    function showSuggestions(val) {
+      const q = val.toLowerCase();
+      if (!q || q.length < 2) { suggest.style.display = 'none'; return; }
+      const matches = TERMS.filter(t => t.toLowerCase().includes(q)).slice(0, 6);
+      if (!matches.length) { suggest.style.display = 'none'; return; }
+      suggest.innerHTML = matches.map(t => `<div data-val="${t}" style="padding:6px 10px;font-size:12px;cursor:pointer;color:#0d3d45;">${t}</div>`).join('');
+      suggest.querySelectorAll('div').forEach(d => {
+        d.addEventListener('mousedown', e => { e.preventDefault(); textEl.textContent = d.dataset.val; item.text = d.dataset.val; suggest.style.display = 'none'; updateLine(); textEl.focus(); });
+        d.addEventListener('mouseover', () => d.style.background = '#e4f7fa');
+        d.addEventListener('mouseout', () => d.style.background = '');
+      });
+      suggest.style.display = 'block';
+    }
+    textEl.addEventListener('input', () => { item.text = textEl.textContent; updateLine(); showSuggestions(textEl.textContent); });
+    textEl.addEventListener('blur', () => { setTimeout(() => suggest.style.display = 'none', 150); item.text = textEl.textContent.trim() || 'Étiquette'; textEl.textContent = item.text; });
+    textEl.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        const first = suggest.querySelector('div');
+        if (first && suggest.style.display !== 'none') { e.preventDefault(); first.dispatchEvent(new MouseEvent('mousedown')); }
+        else { e.preventDefault(); textEl.blur(); }
+      }
+      if (e.key === 'Escape') { suggest.style.display = 'none'; }
+    });
     textEl.addEventListener('mousedown', e => e.stopPropagation());
 
     const dot = document.createElement('div');
@@ -639,7 +663,7 @@
   const termsBtn = document.getElementById('terms-btn');
   const termsModal = document.createElement('div');
   termsModal.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:1000;align-items:center;justify-content:center;';
-  termsModal.innerHTML = '<div style="background:white;border-radius:12px;padding:1.5rem;max-width:500px;width:90%;max-height:70vh;overflow-y:auto;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;"><b style="font-size:15px;">Termes anatomiques</b><span id="terms-close" style="cursor:pointer;font-size:20px;color:#999;">✕</span></div><div id="terms-list" style="display:flex;flex-wrap:wrap;gap:8px;"></div></div>';
+  termsModal.innerHTML = '<div style="background:white;border-radius:12px;padding:1.5rem;max-width:500px;width:90%;max-height:70vh;overflow-y:auto;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem;"><b style="font-size:15px;">Termes anatomiques</b><span id="terms-close" style="cursor:pointer;font-size:20px;color:#999;">✕</span></div><input id="terms-search" placeholder="Rechercher…" style="width:100%;border:1px solid #cce8ec;border-radius:6px;padding:7px 10px;font-size:13px;margin-bottom:1rem;outline:none;"><div id="terms-list" style="display:flex;flex-wrap:wrap;gap:8px;"></div></div>';
   document.body.appendChild(termsModal);
   const termsList = termsModal.querySelector('#terms-list');
   TERMS.forEach(t => {
@@ -654,7 +678,13 @@
     });
     termsList.appendChild(btn);
   });
-  termsModal.querySelector('#terms-close').addEventListener('click', () => termsModal.style.display = 'none');
+  termsModal.querySelector('#terms-search').addEventListener('input', function() {
+    const q = this.value.toLowerCase();
+    termsModal.querySelectorAll('#terms-list button').forEach(b => {
+      b.style.display = b.textContent.toLowerCase().includes(q) ? '' : 'none';
+    });
+  });
+  termsModal.querySelector('#terms-close').addEventListener('click', () => { termsModal.style.display = 'none'; termsModal.querySelector('#terms-search').value = ''; termsModal.querySelectorAll('#terms-list button').forEach(b => b.style.display = ''); });
   termsBtn.addEventListener('click', () => { termsModal.style.display = 'flex'; });
 
   // Undo bouton
