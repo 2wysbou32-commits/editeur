@@ -754,9 +754,13 @@
     if (!currentUser) return;
     try {
       // Récupère les données depuis le script principal via window
+      const clean = arr => arr.map(({id,lx,ly,tx,ty,text,fontSize}) => ({id,lx,ly,tx,ty,text,fontSize}));
+      const rawPages = window._getPagesData ? window._getPagesData() : {};
+      const cleanPages = {};
+      Object.keys(rawPages).forEach(k => { cleanPages[k] = clean(rawPages[k] || []); });
       const data = {
-        labels: window._getLabels ? window._getLabels() : [],
-        pagesData: window._getPagesData ? window._getPagesData() : {},
+        labels: clean(window._getLabels ? window._getLabels() : []),
+        pagesData: cleanPages,
         savedAt: new Date().toISOString()
       };
       await setDoc(doc(db, 'sessions', currentUser.uid), data);
