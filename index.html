@@ -177,6 +177,10 @@
     hintBar.style.display = 'block';
     addBtn.disabled = false;
     exportBtn.disabled = false;
+    undoBtn.disabled = false;
+    fontSizeSelect.disabled = false;
+    termsBtn.disabled = false;
+    saveBtn.disabled = false;
   }
 
   function loadImageFile(f) {
@@ -677,15 +681,7 @@
     reader.readAsText(f);
   });
 
-  // Activer les nouveaux boutons quand image chargee
-  const _origOnBgReady = onBackgroundReady;
-  function onBackgroundReady() {
-    _origOnBgReady();
-    undoBtn.disabled = false;
-    fontSizeSelect.disabled = false;
-    termsBtn.disabled = false;
-    saveBtn.disabled = false;
-  }
+
 </script>
 </body>
 </html>
