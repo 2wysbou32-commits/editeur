@@ -810,5 +810,22 @@
       setTimeout(() => fbMsg.textContent = '', 2500);
     } catch(e) { alert('Erreur chargement : ' + e.message); }
   });
+  // Sauvegarde automatique toutes les 3 minutes
+  setInterval(async () => {
+    if (!currentUser) return;
+    try {
+      const clean = arr => (arr||[]).map(({id,lx,ly,tx,ty,text,fontSize})=>({id,lx,ly,tx,ty,text:text||'',fontSize:fontSize||13}));
+      const rawPages = window._getPagesData ? window._getPagesData() : {};
+      const cleanPages = {};
+      Object.keys(rawPages).forEach(k => { cleanPages[k] = clean(rawPages[k]); });
+      await setDoc(doc(db, 'sessions', currentUser.uid), {
+        labels: clean(window._getLabels ? window._getLabels() : []),
+        pagesData: cleanPages,
+        pdfPageNum: window._getPageNum ? window._getPageNum() : 1,
+        savedAt: new Date().toISOString()
+      });
+      msg('Sauvegarde auto ✓', 2000);
+    } catch(e) { console.warn('Sauvegarde auto échouée:', e.message); }
+  }, 3 * 60 * 1000);
 </script>
 </html>
