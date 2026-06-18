@@ -107,6 +107,8 @@
       <option value="16">Grand</option>
     </select>
     <button class="btn secondary" id="terms-btn" disabled>Termes anatomiques</button>
+    <button class="btn secondary" id="title-btn" disabled>+ Titre</button>
+    <button class="btn secondary" id="repere-btn" disabled>⊹ Repère</button>
     <div class="sep"></div>
     <button class="btn secondary" id="export-btn" disabled>Exporter en PDF</button>
     <button class="btn secondary" id="save-btn" disabled>💾 Sauvegarder</button>
@@ -181,6 +183,8 @@
     fontSizeSelect.disabled = false;
     termsBtn.disabled = false;
     saveBtn.disabled = false;
+    document.getElementById('title-btn').disabled = false;
+    document.getElementById('repere-btn').disabled = false;
   }
 
   function loadImageFile(f) {
@@ -307,7 +311,10 @@
     svg.innerHTML = '<defs>' +
       '<marker id="arrowhead" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#000"/></marker>' +
       '</defs>';
-    labels.forEach(item => renderLabel(item));
+    labels.forEach(item => {
+      if (item.type === 'repere') renderRepere(item);
+      else renderLabel(item);
+    });
   }
 
   function renderLabel(item) {
@@ -367,6 +374,7 @@
 
     wrap.appendChild(box);
     wrap.appendChild(dot);
+    if (window._patchTitleStyle) window._patchTitleStyle(box, textEl, item);
 
     function updateLine() {
       const rect = wrap.getBoundingClientRect();
@@ -635,6 +643,149 @@
       exportBtn.textContent = oldLabel;
     }
   });
+
+  // ── TITRE ──────────────────────────────────────────────
+  document.getElementById('title-btn').addEventListener('click', () => {
+    saveHistory();
+    const id = 'l' + (idCounter++);
+    labels.push({ id, lx: 30, ly: 2, text: 'TITRE', type: 'title', fontSize: labelFontSize });
+    renderAll();
+  });
+
+  // ── REPÈRE ANATOMIQUE ───────────────────────────────────
+  const REPERE_OPTIONS = [
+    { key: 'ul', arrows: ['up','left'],  labels: ['',''],  svg: '↑←' },
+    { key: 'ur', arrows: ['up','right'], labels: ['',''],  svg: '↑→' },
+    { key: 'dl', arrows: ['down','left'],  labels: ['',''], svg: '↓←' },
+    { key: 'dr', arrows: ['down','right'], labels: ['',''], svg: '↓→' },
+  ];
+
+  const repereModal = document.createElement('div');
+  repereModal.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:1000;align-items:center;justify-content:center;';
+  repereModal.innerHTML = `<div style="background:white;border-radius:12px;padding:1.5rem;max-width:420px;width:90%;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+      <b style="font-size:15px;">Repère anatomique</b>
+      <span id="repere-close" style="cursor:pointer;font-size:20px;color:#999;">✕</span>
+    </div>
+    <p style="font-size:12px;color:#666;margin-bottom:1rem;">Choisis l'orientation puis saisis les labels</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:1.2rem;">
+      ${REPERE_OPTIONS.map(o => `<button data-key="${o.key}" style="border:2px solid #cce8ec;border-radius:8px;padding:12px;font-size:22px;cursor:pointer;background:white;">${o.svg}</button>`).join('')}
+    </div>
+    <div id="repere-labels" style="display:none;margin-bottom:1rem;">
+      <div style="display:flex;gap:8px;margin-bottom:8px;">
+        <input id="rep-label1" placeholder="Label flèche 1 (ex: Sup)" style="flex:1;border:1px solid #cce8ec;border-radius:6px;padding:6px 8px;font-size:12px;">
+        <input id="rep-label2" placeholder="Label flèche 2 (ex: Droit)" style="flex:1;border:1px solid #cce8ec;border-radius:6px;padding:6px 8px;font-size:12px;">
+      </div>
+      <button id="repere-add" style="background:var(--teal);color:white;border:none;border-radius:8px;padding:8px 20px;font-size:13px;font-weight:600;cursor:pointer;width:100%;">Ajouter sur le schéma</button>
+    </div>
+  </div>`;
+  document.body.appendChild(repereModal);
+
+  let selectedRepereKey = null;
+  repereModal.querySelectorAll('[data-key]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      repereModal.querySelectorAll('[data-key]').forEach(b => b.style.borderColor = '#cce8ec');
+      btn.style.borderColor = 'var(--teal)';
+      selectedRepereKey = btn.dataset.key;
+      repereModal.querySelector('#repere-labels').style.display = 'block';
+    });
+  });
+
+  repereModal.querySelector('#repere-close').addEventListener('click', () => { repereModal.style.display = 'none'; });
+
+  repereModal.querySelector('#repere-add').addEventListener('click', () => {
+    const l1 = repereModal.querySelector('#rep-label1').value || '';
+    const l2 = repereModal.querySelector('#rep-label2').value || '';
+    saveHistory();
+    const id = 'l' + (idCounter++);
+    labels.push({ id, lx: 5, ly: 5, type: 'repere', key: selectedRepereKey, label1: l1, label2: l2 });
+    renderAll();
+    repereModal.style.display = 'none';
+  });
+
+  document.getElementById('repere-btn').addEventListener('click', () => {
+    selectedRepereKey = null;
+    repereModal.querySelectorAll('[data-key]').forEach(b => b.style.borderColor = '#cce8ec');
+    repereModal.querySelector('#repere-labels').style.display = 'none';
+    repereModal.querySelector('#rep-label1').value = '';
+    repereModal.querySelector('#rep-label2').value = '';
+    repereModal.style.display = 'flex';
+  });
+
+  function renderRepere(item) {
+    const size = 60;
+    const fontSize = 11;
+    const el = document.createElement('div');
+    el.dataset.id = item.id;
+    el.className = 'label-box';
+    el.style.cssText = `left:${item.lx}%;top:${item.ly}%;padding:4px;background:transparent;min-width:${size+30}px;`;
+
+    const grip = document.createElement('div');
+    grip.className = 'grip no-print';
+    grip.textContent = '✥';
+    grip.style.cssText = 'position:absolute;left:0;top:0;width:16px;height:16px;border-radius:4px;background:var(--teal);color:white;font-size:10px;display:flex;align-items:center;justify-content:center;cursor:move;touch-action:none;z-index:2;';
+
+    const del = document.createElement('div');
+    del.className = 'del no-print';
+    del.textContent = '✕';
+
+    const dirs = { ul:['up','left'], ur:['up','right'], dl:['down','left'], dr:['down','right'] };
+    const [d1, d2] = dirs[item.key] || ['up','right'];
+    const isUp = d1 === 'up';
+    const isRight = d2 === 'right';
+    const ox = isRight ? 0 : size;
+    const oy = isUp ? size : 0;
+    const svgEl = document.createElementNS('http://www.w3.org/2000/svg','svg');
+    svgEl.setAttribute('width', size + 30);
+    svgEl.setAttribute('height', size + 20);
+    svgEl.style.marginLeft = '18px';
+    svgEl.innerHTML = `<defs><marker id="rh${item.id}" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#000"/></marker></defs>
+      <line x1="${ox}" y1="${oy}" x2="${ox}" y2="${isUp ? 4 : size-4}" stroke="#000" stroke-width="1.5" marker-end="url(#rh${item.id})"/>
+      <line x1="${ox}" y1="${oy}" x2="${isRight ? size-4 : 4}" y2="${oy}" stroke="#000" stroke-width="1.5" marker-end="url(#rh${item.id})"/>
+      <text x="${ox}" y="${isUp ? 0 : size+14}" text-anchor="middle" font-size="${fontSize}" font-family="Arial" font-weight="700">${item.label1}</text>
+      <text x="${isRight ? size+2 : -2}" y="${oy+4}" text-anchor="${isRight ? 'start' : 'end'}" font-size="${fontSize}" font-family="Arial" font-weight="700">${item.label2}</text>`;
+
+    el.appendChild(grip);
+    el.appendChild(del);
+    el.appendChild(svgEl);
+    wrap.appendChild(el);
+
+    del.addEventListener('click', e => {
+      e.stopPropagation();
+      saveHistory();
+      labels = labels.filter(l => l.id !== item.id);
+      el.remove();
+    });
+
+    const rect = wrap.getBoundingClientRect();
+    grip.addEventListener('mousedown', e => {
+      e.preventDefault(); e.stopPropagation();
+      const start = { x: e.clientX, y: e.clientY };
+      const orig = { lx: item.lx, ly: item.ly };
+      function onMove(ev) {
+        item.lx = Math.min(99, Math.max(0, orig.lx + (ev.clientX - start.x) / wrap.getBoundingClientRect().width * 100));
+        item.ly = Math.min(99, Math.max(0, orig.ly + (ev.clientY - start.y) / wrap.getBoundingClientRect().height * 100));
+        el.style.left = item.lx + '%'; el.style.top = item.ly + '%';
+      }
+      function onUp() { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); }
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  }
+
+  // ── TITRE (rendu spécial dans renderLabel) ──────────────
+  // Le titre est géré dans renderLabel via item.type === 'title'
+  // on surcharge le style de la label-box
+  const _origRenderLabel = renderLabel;
+  window._patchTitleStyle = (box, textEl, item) => {
+    if (item.type !== 'title') return;
+    box.style.background = 'transparent';
+    textEl.style.textTransform = 'uppercase';
+    textEl.style.textDecoration = 'underline';
+    textEl.style.fontSize = '15px';
+    textEl.style.fontWeight = '800';
+    textEl.style.color = '#0d3d45';
+  };
 
   window.addEventListener('resize', () => labels.forEach(item => item._updateLine && item._updateLine()));
 
