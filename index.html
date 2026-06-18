@@ -746,7 +746,7 @@
     } else {
       try {
         await signInWithPopup(auth, new GoogleAuthProvider());
-      } catch(e) { alert('Connexion annulée.'); }
+      } catch(e) { alert('Erreur : ' + e.code + ' — ' + e.message); }
     }
   });
 
