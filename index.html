@@ -313,6 +313,7 @@
       '</defs>';
     labels.forEach(item => {
       if (item.type === 'repere') renderRepere(item);
+      else if (item.type === 'title') renderTitle(item);
       else renderLabel(item);
     });
   }
