@@ -788,7 +788,51 @@
     textEl.style.fontWeight = '800';
     textEl.style.color = '#0d3d45';
   };
+function renderTitle(item) {
+    const box = document.createElement('div');
+    box.className = 'label-box';
+    box.dataset.id = item.id;
+    box.style.left = item.lx + '%';
+    box.style.top = item.ly + '%';
+    box.style.background = 'transparent';
+    box.style.padding = '4px 8px 4px 22px';
 
+    const grip = document.createElement('div');
+    grip.className = 'grip no-print'; grip.textContent = '✥';
+    box.appendChild(grip);
+
+    const del = document.createElement('div');
+    del.className = 'del no-print'; del.textContent = '✕';
+    box.appendChild(del);
+
+    const textEl = document.createElement('div');
+    textEl.className = 'label-text';
+    textEl.contentEditable = 'true';
+    textEl.textContent = item.text;
+    textEl.style.textTransform = 'uppercase';
+    textEl.style.textDecoration = 'underline';
+    textEl.style.fontSize = '15px';
+    textEl.style.fontWeight = '800';
+    textEl.style.color = '#0d3d45';
+    box.appendChild(textEl);
+
+    textEl.addEventListener('input', () => { item.text = textEl.textContent; });
+    textEl.addEventListener('blur', () => { item.text = textEl.textContent.trim() || 'TITRE'; textEl.textContent = item.text; });
+    textEl.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); textEl.blur(); } });
+    textEl.addEventListener('mousedown', e => e.stopPropagation());
+
+    wrap.appendChild(box);
+
+    del.addEventListener('click', e => {
+      e.stopPropagation();
+      saveHistory();
+      labels = labels.filter(l => l.id !== item.id);
+      box.remove();
+    });
+
+    grip.addEventListener('mousedown', e => startDragLabel(e, item, box));
+    grip.addEventListener('touchstart', e => startDragLabel(e, item, box), {passive: false});
+  }
   window.addEventListener('resize', () => labels.forEach(item => item._updateLine && item._updateLine()));
 
   // Bridge pour Firebase
