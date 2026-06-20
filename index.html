@@ -594,12 +594,15 @@
     const ctx = canvas.getContext('2d');
     ctx.drawImage(sourceImg, 0, 0, canvas.width, canvas.height);
 
-    // Filigrane logo, discret, en haut à gauche
+    // Logo en haut à gauche, opaque, avec ombre portée
     if (exportLogo.complete && exportLogo.naturalWidth) {
-      const logoSize = canvas.width * 0.045;
-      const margin = canvas.width * 0.015;
+      const logoSize = canvas.width * 0.05;
+      const margin = canvas.width * 0.02;
       ctx.save();
-      ctx.globalAlpha = 0.6;
+      ctx.shadowColor = 'rgba(0,0,0,0.25)';
+      ctx.shadowBlur = logoSize * 0.18;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = logoSize * 0.05;
       ctx.drawImage(exportLogo, margin, margin, logoSize, logoSize);
       ctx.restore();
     }
