@@ -164,6 +164,9 @@
   </div>
 
 <script>
+  // Logo pour filigrane à l'export
+  const exportLogo = new Image();
+  exportLogo.src = "COLLE_ICI_LE_CONTENU_DU_FICHIER_logo_data_uri.txt";
   const fileInput = document.getElementById('file-input');
   const uploadBtn = document.getElementById('upload-btn');
   const addBtn = document.getElementById('add-btn');
@@ -591,6 +594,16 @@
     const ctx = canvas.getContext('2d');
     ctx.drawImage(sourceImg, 0, 0, canvas.width, canvas.height);
 
+    // Filigrane logo, discret, en haut à gauche
+    if (exportLogo.complete && exportLogo.naturalWidth) {
+      const logoSize = canvas.width * 0.045;
+      const margin = canvas.width * 0.015;
+      ctx.save();
+      ctx.globalAlpha = 0.35;
+      ctx.drawImage(exportLogo, margin, margin, logoSize, logoSize);
+      ctx.restore();
+    }
+
     const fontSize = Math.max(13, Math.round(canvas.width * 0.010));
     const lineHeight = fontSize * 1.35;
     const padX = fontSize * 0.55, padY = fontSize * 0.5;
@@ -671,6 +684,7 @@
     exportBtn.disabled = true;
     try {
       await ensureJsPdfLoaded();
+      if (!exportLogo.complete) { await new Promise(r => { exportLogo.onload = r; exportLogo.onerror = r; }); }
       const canvases = [];
 
       if (pdfDoc && pdfDoc.numPages > 1) {
