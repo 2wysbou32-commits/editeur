@@ -40,14 +40,14 @@
   .page-nav { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); font-weight: 500; }
 
   /* MAIN AREA */
-  .main { padding: 2rem; }
+  .main { padding: 2rem; overflow: auto; }
   .hint-bar { font-size: 12px; color: var(--muted); margin-bottom: 0.9rem; max-width: 800px; line-height: 1.6; background: var(--teal-light); border-left: 3px solid var(--teal); border-radius: 0 6px 6px 0; padding: 6px 12px; }
   .empty-hint { padding: 2rem; color: var(--muted); border: none; font-size: 13px; background: transparent; }
   .empty-hint .icon { font-size: 40px; display: block; margin-bottom: 0.75rem; }
 
   /* CANVAS */
   .canvas-wrap { position: relative; display: inline-block; max-width: 100%; background: white; box-shadow: 0 4px 24px rgba(18,163,184,0.12), 0 1px 4px rgba(0,0,0,0.06); border-radius: 4px; }
-  .canvas-wrap img { display: block; max-width: 100%; height: auto; user-select: none; border-radius: 4px; }
+  .canvas-wrap img { display: block; max-width: none; height: auto; user-select: none; border-radius: 4px; }
   .canvas-wrap.placing { cursor: crosshair; }
   .lines-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
 
@@ -109,6 +109,12 @@
     <button class="btn secondary" id="terms-btn" disabled>Termes anatomiques</button>
     <button class="btn secondary" id="title-btn" disabled>+ Titre</button>
     <button class="btn secondary" id="repere-btn" disabled>⊹ Repère</button>
+    <div class="sep"></div>
+    <button class="btn secondary" id="zoom-out-btn" disabled>−</button>
+    <span id="zoom-level" style="font-size:12px;color:var(--muted);min-width:38px;text-align:center;">100%</span>
+    <button class="btn secondary" id="zoom-in-btn" disabled>+</button>
+    <button class="btn secondary" id="zoom-reset-btn" disabled>Ajuster</button>
+    <button class="btn secondary" id="toggle-labels-btn" disabled>👁 Masquer</button>
     <div class="sep"></div>
     <button class="btn secondary" id="export-btn" disabled>Exporter en PDF</button>
     <button class="btn secondary" id="save-btn" disabled>💾 Sauvegarder</button>
@@ -185,6 +191,11 @@
     saveBtn.disabled = false;
     document.getElementById('title-btn').disabled = false;
     document.getElementById('repere-btn').disabled = false;
+    document.getElementById('zoom-out-btn').disabled = false;
+    document.getElementById('zoom-in-btn').disabled = false;
+    document.getElementById('zoom-reset-btn').disabled = false;
+    document.getElementById('toggle-labels-btn').disabled = false;
+    resetZoom();
   }
 
   function loadImageFile(f) {
@@ -332,6 +343,20 @@
     const del = document.createElement('div');
     del.className = 'del no-print'; del.textContent = '✕'; del.title = 'Supprimer';
     box.appendChild(del);
+
+    const dup = document.createElement('div');
+    dup.className = 'del no-print';
+    dup.textContent = '⧉';
+    dup.title = 'Dupliquer';
+    dup.style.cssText = 'top:-8px; left:-8px; right:auto; background:var(--teal);';
+    box.appendChild(dup);
+    dup.addEventListener('click', e => {
+      e.stopPropagation();
+      saveHistory();
+      const newId = 'l' + (idCounter++);
+      labels.push({ ...item, id: newId, lx: Math.min(95, item.lx + 4), ly: Math.min(95, item.ly + 4), tx: Math.min(99, item.tx + 4), ty: Math.min(99, item.ty + 4) });
+      renderAll();
+    });
 
     const textEl = document.createElement('div');
     textEl.className = 'label-text';
@@ -605,38 +630,64 @@
     });
   }
 
+  const previewModal = document.createElement('div');
+  previewModal.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;';
+  previewModal.innerHTML = `<div style="background:white;border-radius:12px;padding:1.5rem;max-width:90%;max-height:85vh;display:flex;flex-direction:column;">
+    <b style="font-size:15px;margin-bottom:0.75rem;">Aperçu avant export</b>
+    <div id="preview-thumbs" style="display:flex;gap:10px;overflow-x:auto;padding-bottom:0.75rem;"></div>
+    <div style="display:flex;gap:10px;margin-top:0.75rem;justify-content:flex-end;">
+      <button id="preview-cancel" class="btn secondary">Annuler</button>
+      <button id="preview-confirm" class="btn primary">Télécharger le PDF</button>
+    </div>
+  </div>`;
+  document.body.appendChild(previewModal);
+
   exportBtn.addEventListener('click', async () => {
     const oldLabel = exportBtn.textContent;
     exportBtn.disabled = true;
     try {
       await ensureJsPdfLoaded();
-      const { jsPDF } = window.jspdf;
-      let pdf = null;
+      const canvases = [];
 
       if (pdfDoc && pdfDoc.numPages > 1) {
         pagesData[pdfPageNum] = labels;
         for (let p = 1; p <= pdfDoc.numPages; p++) {
-          exportBtn.textContent = 'Export page ' + p + ' / ' + pdfDoc.numPages + '…';
+          exportBtn.textContent = 'Préparation page ' + p + ' / ' + pdfDoc.numPages + '…';
           const sourceCanvas = (p === pdfPageNum) ? img : await renderPdfPageToCanvas(p, 2);
           const pageLabels = pagesData[p] || [];
-          const exportCanvas = buildExportCanvas(sourceCanvas, pageLabels);
-          const orientation = exportCanvas.width >= exportCanvas.height ? 'landscape' : 'portrait';
-          if (!pdf) {
-            pdf = new jsPDF({ orientation, unit: 'px', format: [exportCanvas.width, exportCanvas.height] });
-          } else {
-            pdf.addPage([exportCanvas.width, exportCanvas.height], orientation);
-          }
-          pdf.addImage(exportCanvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, exportCanvas.width, exportCanvas.height);
+          canvases.push(buildExportCanvas(sourceCanvas, pageLabels));
         }
       } else {
-        exportBtn.textContent = 'Export en cours…';
-        const exportCanvas = buildExportCanvas(img, labels);
-        const orientation = exportCanvas.width >= exportCanvas.height ? 'landscape' : 'portrait';
-        pdf = new jsPDF({ orientation, unit: 'px', format: [exportCanvas.width, exportCanvas.height] });
-        pdf.addImage(exportCanvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, exportCanvas.width, exportCanvas.height);
+        exportBtn.textContent = 'Préparation…';
+        canvases.push(buildExportCanvas(img, labels));
       }
 
-      pdf.save('schemas-annotes.pdf');
+      const thumbs = previewModal.querySelector('#preview-thumbs');
+      thumbs.innerHTML = '';
+      canvases.forEach((c, i) => {
+        const im = document.createElement('img');
+        im.src = c.toDataURL('image/jpeg', 0.7);
+        im.style.cssText = 'height:280px;border:1px solid #ddd;border-radius:6px;';
+        thumbs.appendChild(im);
+      });
+      previewModal.style.display = 'flex';
+
+      previewModal.querySelector('#preview-cancel').onclick = () => { previewModal.style.display = 'none'; exportBtn.disabled = false; exportBtn.textContent = oldLabel; };
+      previewModal.querySelector('#preview-confirm').onclick = () => {
+        const { jsPDF } = window.jspdf;
+        let pdf = null;
+        canvases.forEach(c => {
+          const orientation = c.width >= c.height ? 'landscape' : 'portrait';
+          if (!pdf) pdf = new jsPDF({ orientation, unit: 'px', format: [c.width, c.height] });
+          else pdf.addPage([c.width, c.height], orientation);
+          pdf.addImage(c.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, c.width, c.height);
+        });
+        pdf.save('schemas-annotes.pdf');
+        previewModal.style.display = 'none';
+        if (window._deleteStorage) window._deleteStorage();
+        exportBtn.disabled = false;
+        exportBtn.textContent = oldLabel;
+      };
     } catch (err) {
       alert(err.message || 'Erreur lors de l\'export PDF.');
     } finally {
@@ -833,6 +884,32 @@ function renderTitle(item) {
     grip.addEventListener('mousedown', e => startDragLabel(e, item, box));
     grip.addEventListener('touchstart', e => startDragLabel(e, item, box), {passive: false});
   }
+ // ── ZOOM ─────────────────────────────────────────────
+  let zoomLevel = 1;
+  const zoomLevelLabel = document.getElementById('zoom-level');
+  function applyZoom() {
+    img.style.width = (img.naturalWidth * zoomLevel) + 'px';
+    zoomLevelLabel.textContent = Math.round(zoomLevel * 100) + '%';
+    labels.forEach(item => item._updateLine && item._updateLine());
+  }
+  function resetZoom() {
+    const containerWidth = wrap.parentElement.clientWidth;
+    zoomLevel = Math.min(1, containerWidth / img.naturalWidth);
+    applyZoom();
+  }
+  document.getElementById('zoom-in-btn').addEventListener('click', () => { zoomLevel = Math.min(3, zoomLevel + 0.2); applyZoom(); });
+  document.getElementById('zoom-out-btn').addEventListener('click', () => { zoomLevel = Math.max(0.2, zoomLevel - 0.2); applyZoom(); });
+  document.getElementById('zoom-reset-btn').addEventListener('click', resetZoom);
+
+  // ── MASQUER LES ÉTIQUETTES ──────────────────────────────
+  let labelsHidden = false;
+  const toggleLabelsBtn = document.getElementById('toggle-labels-btn');
+  toggleLabelsBtn.addEventListener('click', () => {
+    labelsHidden = !labelsHidden;
+    wrap.querySelectorAll('.label-box, .target-dot').forEach(el => el.style.visibility = labelsHidden ? 'hidden' : 'visible');
+    svg.style.visibility = labelsHidden ? 'hidden' : 'visible';
+    toggleLabelsBtn.textContent = labelsHidden ? '👁 Afficher' : '👁 Masquer';
+  }); 
   window.addEventListener('resize', () => labels.forEach(item => item._updateLine && item._updateLine()));
 
   // Bridge pour Firebase
