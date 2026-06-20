@@ -26,19 +26,31 @@
   .header-title strong { font-size: 17px; font-weight: 700; display: block; letter-spacing: 0.5px; }
   .header-title span { font-size: 11px; opacity: 0.8; text-transform: uppercase; letter-spacing: 1px; }
 
-  /* TOOLBAR */
-  .toolbar-wrap { background: white; border-bottom: 1px solid var(--teal-mid); padding: 0.45rem 2rem; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .btn { border: none; border-radius: 6px; padding: 8px 16px; font-size: 12px; font-weight: 600; cursor: pointer; transition: background 0.15s, transform 0.1s; text-transform: uppercase; letter-spacing: 0.06em; }
-  .btn:active { transform: scale(0.97); }
-  .btn.primary { background: var(--teal); color: white; }
+ /* TOOLBAR */
+  .toolbar-wrap { background: white; border-bottom: 1px solid #e4eef0; padding: 0.6rem 2rem; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .btn { border: none; border-radius: 7px; padding: 8px 14px; font-size: 12.5px; font-weight: 600; cursor: pointer; transition: background 0.15s, transform 0.1s; }
+  .btn:active { transform: scale(0.96); }
+  .btn.primary { background: var(--teal); color: white; letter-spacing: 0.02em; }
   .btn.primary:hover { background: var(--teal-dark); }
-  .btn.secondary { background: var(--teal-light); color: var(--teal-dark); }
-  .btn.secondary:hover { background: var(--teal-mid); }
-  .btn:disabled { background: #e0e0e0; color: #aaa; cursor: not-allowed; transform: none; }
+  .btn.secondary { background: transparent; color: var(--text); }
+  .btn.secondary:hover { background: var(--teal-light); }
+  .btn:disabled { color: #c2c2c2; cursor: not-allowed; transform: none; }
+  .btn:disabled:hover { background: transparent; }
   .btn.active { background: var(--red); color: white; }
-  .sep { width: 1px; height: 28px; background: var(--teal-mid); margin: 0 4px; }
-  .page-nav { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); font-weight: 500; }
 
+  .btn-group { display: flex; align-items: center; background: var(--gray); border-radius: 9px; padding: 3px; gap: 1px; }
+  .btn-group .btn { padding: 6px 11px; border-radius: 6px; }
+  .btn-group .btn.secondary:hover { background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+
+  .btn-icon { width: 30px; height: 30px; border: none; border-radius: 6px; background: transparent; color: var(--text); font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.15s; }
+  .btn-icon:hover { background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  .btn-icon:disabled { color: #c2c2c2; cursor: not-allowed; }
+  .btn-icon:disabled:hover { background: transparent; box-shadow: none; }
+
+  .zoom-pct { font-size: 11.5px; color: var(--muted); font-weight: 600; min-width: 34px; text-align: center; }
+
+  .sep { width: 1px; height: 24px; background: #e4eef0; margin: 0 2px; }
+  .page-nav { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); font-weight: 500; }
   /* MAIN AREA */
   .main { padding: 2rem; overflow: auto; }
   .hint-bar { font-size: 12px; color: var(--muted); margin-bottom: 0.9rem; max-width: 800px; line-height: 1.6; background: var(--teal-light); border-left: 3px solid var(--teal); border-radius: 0 6px 6px 0; padding: 6px 12px; }
@@ -97,30 +109,40 @@
 
   <div class="toolbar-wrap no-print">
     <input type="file" id="file-input" accept="image/*,application/pdf" style="display:none">
-    <button class="btn primary" id="upload-btn">📂 Charger un fichier</button>
+    <button class="btn primary" id="upload-btn">Charger un fichier</button>
+
     <div class="sep"></div>
-    <button class="btn secondary" id="add-btn" disabled>+ Ajouter une étiquette (A)</button>
-    <button class="btn secondary" id="undo-btn" disabled title="Annuler (Ctrl+Z)">↩ Annuler</button>
-    <select id="font-size-select" disabled style="border:1px solid var(--teal-mid);border-radius:6px;padding:6px 8px;font-size:12px;color:var(--text);background:white;cursor:pointer;">
+
+    <div class="btn-group">
+      <button class="btn secondary" id="add-btn" disabled title="Ajouter une étiquette (A)">+ Étiquette</button>
+      <button class="btn secondary" id="title-btn" disabled title="Ajouter un titre">Titre</button>
+      <button class="btn secondary" id="repere-btn" disabled title="Repère anatomique">Repère</button>
+      <button class="btn secondary" id="terms-btn" disabled title="Termes anatomiques">Termes</button>
+    </div>
+
+    <select id="font-size-select" disabled style="border:none;background:var(--gray);border-radius:9px;padding:8px 10px;font-size:12.5px;color:var(--text);cursor:pointer;">
       <option value="11">Petit</option>
       <option value="13" selected>Moyen</option>
       <option value="16">Grand</option>
     </select>
-    <button class="btn secondary" id="terms-btn" disabled>Termes anatomiques</button>
-    <button class="btn secondary" id="title-btn" disabled>+ Titre</button>
-    <button class="btn secondary" id="repere-btn" disabled>⊹ Repère</button>
+
     <div class="sep"></div>
-    <button class="btn secondary" id="zoom-out-btn" disabled>−</button>
-    <span id="zoom-level" style="font-size:12px;color:var(--muted);min-width:38px;text-align:center;">100%</span>
-    <button class="btn secondary" id="zoom-in-btn" disabled>+</button>
-    <button class="btn secondary" id="zoom-reset-btn" disabled>Ajuster</button>
-    <button class="btn secondary" id="toggle-labels-btn" disabled>👁 Masquer</button>
+
+    <div class="btn-group">
+      <button class="btn-icon" id="zoom-out-btn" disabled title="Zoom arrière">−</button>
+      <span class="zoom-pct" id="zoom-level">100%</span>
+      <button class="btn-icon" id="zoom-in-btn" disabled title="Zoom avant">+</button>
+      <button class="btn-icon" id="zoom-reset-btn" disabled title="Ajuster à l'écran">⤢</button>
+      <button class="btn-icon" id="toggle-labels-btn" disabled title="Masquer les étiquettes">👁</button>
+      <button class="btn-icon" id="undo-btn" disabled title="Annuler (Ctrl+Z)">↩</button>
+    </div>
+
     <div class="sep"></div>
+
     <button class="btn secondary" id="export-btn" disabled>Exporter en PDF</button>
-    <button class="btn secondary" id="save-btn" disabled>💾 Sauvegarder</button>
+    <button class="btn secondary" id="save-btn" disabled>Sauvegarder</button>
     <input type="file" id="load-input" accept=".json" style="display:none">
-    <button class="btn secondary" id="load-btn">📁 Charger session</button>
-    <div class="sep"></div>
+    <button class="btn secondary" id="load-btn">Charger session</button>
   </div>
     <div class="page-nav" id="page-nav" style="display:none">
       <button class="btn secondary" id="prev-page">‹</button>
