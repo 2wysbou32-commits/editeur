@@ -921,7 +921,27 @@ function renderTitle(item) {
     applyZoom();
   }
   document.getElementById('zoom-in-btn').addEventListener('click', () => { zoomLevel = Math.min(3, zoomLevel + 0.2); applyZoom(); });
-  document.getElementById('zoom-out-btn').addEventListener('click', () => { zoomLevel = Math.max(0.2, zoomLevel - 0.2); applyZoom(); });
+  document.getElementById('zoom-reset-btn').addEventListener('click', resetZoom);
+
+  // ── GLISSER POUR SE DÉPLACER ─────────────────────────────
+  const mainArea = document.getElementById('main-area');
+  let isPanning = false;
+  let panStart = { x: 0, y: 0, scrollLeft: 0, scrollTop: 0 };
+
+  wrap.addEventListener('mousedown', e => {
+    if (placing) return;
+    if (e.target.closest('.label-box') || e.target.closest('.target-dot')) return;
+    isPanning = true;
+    wrap.classList.add('panning');
+    panStart = { x: e.clientX, y: e.clientY, scrollLeft: mainArea.scrollLeft, scrollTop: mainArea.scrollTop };
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', e => {
+    if (!isPanning) return;
+    mainArea.scrollLeft = panStart.scrollLeft - (e.clientX - panStart.x);
+    mainArea.scrollTop = panStart.scrollTop - (e.clientY - panStart.y);
+  });
+  document.addEventListener('mouseup', () => { isPanning = false; wrap.classList.remove('panning'); });
   document.getElementById('zoom-reset-btn').addEventListener('click', resetZoom);
 
   // ── MASQUER LES ÉTIQUETTES ──────────────────────────────
