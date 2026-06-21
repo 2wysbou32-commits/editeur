@@ -141,6 +141,7 @@
     <div class="sep"></div>
 
     <button class="btn secondary" id="export-btn" disabled>Exporter en PDF</button>
+    <button class="btn secondary" id="revision-btn" disabled>Révision</button>
     <button class="btn secondary" id="save-btn" disabled>Sauvegarder</button>
     <input type="file" id="load-input" accept=".json" style="display:none">
     <button class="btn secondary" id="load-btn">Charger session</button>
@@ -221,6 +222,7 @@
     document.getElementById('zoom-in-btn').disabled = false;
     document.getElementById('zoom-reset-btn').disabled = false;
     document.getElementById('toggle-labels-btn').disabled = false;
+    document.getElementById('revision-btn').disabled = false;
     resetZoom();
     fitMainHeight();
   }
@@ -979,6 +981,100 @@ function renderTitle(item) {
     toggleLabelsBtn.textContent = labelsHidden ? '👁 Afficher' : '👁 Masquer';
   }); 
   window.addEventListener('resize', () => labels.forEach(item => item._updateLine && item._updateLine()));
+
+  // ── EXPORT POUR RÉVISION (ZIP : images vierges + JSON) ──
+  function ensureJsZipLoaded() {
+    if (window.JSZip) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+      s.onload = resolve;
+      s.onerror = () => reject(new Error('Impossible de charger le générateur ZIP (connexion internet requise).'));
+      document.head.appendChild(s);
+    });
+  }
+
+  function slugify(str) {
+    return (str || '')
+      .toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '') || 'schema';
+  }
+
+  function buildRepereJSON(pageLabels, titre, imageFilename) {
+    const used = {};
+    const reperes = pageLabels.filter(l => !l.type).map(l => {
+      let id = slugify(l.text);
+      if (used[id]) { used[id]++; id = id + '_' + used[id]; } else { used[id] = 1; }
+      return { id, label: l.text, x: Math.round(l.tx * 10) / 10, y: Math.round(l.ty * 10) / 10 };
+    });
+    return { version: 1, titre: titre || '', image: imageFilename, reperes };
+  }
+
+  function blankCanvasFrom(sourceImg) {
+    const c = document.createElement('canvas');
+    c.width = sourceImg.naturalWidth || sourceImg.width;
+    c.height = sourceImg.naturalHeight || sourceImg.height;
+    c.getContext('2d').drawImage(sourceImg, 0, 0, c.width, c.height);
+    return c;
+  }
+
+  document.getElementById('revision-btn').addEventListener('click', async () => {
+    const btn = document.getElementById('revision-btn');
+    const oldLabel = btn.textContent;
+    btn.disabled = true;
+    try {
+      await ensureJsZipLoaded();
+      const zip = new JSZip();
+      const usedNames = {};
+
+      function reserveName(base) {
+        let name = base;
+        if (usedNames[name]) { usedNames[name]++; name = name + '_' + usedNames[name]; }
+        else { usedNames[name] = 1; }
+        return name;
+      }
+
+      if (pdfDoc && pdfDoc.numPages > 1) {
+        pagesData[pdfPageNum] = labels;
+        for (let p = 1; p <= pdfDoc.numPages; p++) {
+          btn.textContent = 'Page ' + p + ' / ' + pdfDoc.numPages + '…';
+          const pageLabels = pagesData[p] || [];
+          const titleItem = pageLabels.find(l => l.type === 'title');
+          const titre = titleItem ? titleItem.text : ('Schéma ' + p);
+          const base = reserveName(slugify(titre));
+          const sourceCanvas = (p === pdfPageNum) ? img : await renderPdfPageToCanvas(p, 2);
+          const blank = blankCanvasFrom(sourceCanvas);
+          zip.file(base + '.png', blank.toDataURL('image/png').split(',')[1], { base64: true });
+          zip.file(base + '.json', JSON.stringify(buildRepereJSON(pageLabels, titre, base + '.png'), null, 2));
+        }
+      } else {
+        const titleItem = labels.find(l => l.type === 'title');
+        const titre = titleItem ? titleItem.text : 'Schéma';
+        const base = reserveName(slugify(titre));
+        const blank = blankCanvasFrom(img);
+        zip.file(base + '.png', blank.toDataURL('image/png').split(',')[1], { base64: true });
+        zip.file(base + '.json', JSON.stringify(buildRepereJSON(labels, titre, base + '.png'), null, 2));
+      }
+
+      btn.textContent = 'Compression…';
+      const blob = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'revision-masterpass.zip';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert(err.message || 'Erreur lors de la génération du ZIP.');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = oldLabel;
+    }
+  });
+
+  // Bridge pour Firebase
 
   // Bridge pour Firebase
   window._getLabels = () => labels;
