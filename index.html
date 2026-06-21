@@ -193,12 +193,14 @@
   let pdfDoc = null;
   let pdfPageNum = 1;
   let pagesData = {};
+  let importedFileName = '';
   const PDFJS_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
-
+  
   uploadBtn.addEventListener('click', () => fileInput.click());
   fileInput.addEventListener('change', e => {
     const f = e.target.files[0];
     if (!f) return;
+    importedFileName = f.name.replace(/\.[^.]+$/, '');
     if (f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf')) {
       loadPdfFile(f);
     } else {
@@ -1063,7 +1065,7 @@ function renderTitle(item) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'revision-masterpass.zip';
+      a.download = (importedFileName || 'schema') + '-annote.zip';
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
