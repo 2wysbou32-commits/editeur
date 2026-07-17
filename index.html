@@ -937,6 +937,8 @@ function renderTitle(item) {
     box.style.top = item.ly + '%';
     box.style.background = 'transparent';
     box.style.padding = '4px 8px 4px 22px';
+    box.style.maxWidth = '600px';
+    box.style.width = 'max-content';
 
     const grip = document.createElement('div');
     grip.className = 'grip no-print'; grip.textContent = '✥';
