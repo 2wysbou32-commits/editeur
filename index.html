@@ -992,6 +992,7 @@ function renderTitle(item) {
     applyZoom();
   }
   document.getElementById('zoom-in-btn').addEventListener('click', () => { zoomLevel = Math.min(3, zoomLevel + 0.2); applyZoom(); });
+  document.getElementById('zoom-out-btn').addEventListener('click', () => { zoomLevel = Math.max(0.1, zoomLevel - 0.2); applyZoom(); });
   document.getElementById('zoom-reset-btn').addEventListener('click', resetZoom);
 
   // ── GLISSER POUR SE DÉPLACER ─────────────────────────────
