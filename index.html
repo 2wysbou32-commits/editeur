@@ -623,9 +623,54 @@
 
     labelsArr.forEach(item => {
       const lx = item.lx / 100 * canvas.width, ly = item.ly / 100 * canvas.height;
+      if (item.type === 'repere') {
+        const size = canvas.width * 0.035;
+        const repFontSize = Math.max(11, canvas.width * 0.009);
+        const dirs = { ul:['up','left'], ur:['up','right'], dl:['down','left'], dr:['down','right'] };
+        const [d1, d2] = dirs[item.key] || ['up','right'];
+        const isUp = d1 === 'up';
+        const isRight = d2 === 'right';
+        const ox = lx, oy = ly;
+        const vx = ox, vy = isUp ? oy - size : oy + size;
+        const hx = isRight ? ox + size : ox - size, hy = oy;
+
+        ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        ctx.strokeStyle = '#000'; ctx.lineWidth = lineWidth;
+        ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(vx, vy); ctx.stroke();
+        drawArrowheadCanvas(ctx, ox, oy, vx, vy, arrowSize, '#000');
+        ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(hx, hy); ctx.stroke();
+        drawArrowheadCanvas(ctx, ox, oy, hx, hy, arrowSize, '#000');
+
+        ctx.font = '700 ' + repFontSize + 'px -apple-system, Arial, sans-serif';
+        ctx.fillStyle = '#111';
+        ctx.textBaseline = isUp ? 'bottom' : 'top';
+        ctx.textAlign = 'center';
+        ctx.fillText(item.label1 || '', vx, isUp ? vy - 4 : vy + 4);
+        ctx.textBaseline = 'middle';
+        ctx.textAlign = isRight ? 'left' : 'right';
+        ctx.fillText(item.label2 || '', isRight ? hx + 6 : hx - 6, hy);
+        ctx.textAlign = 'left';
+        return;
+      }
+
+      if (item.type === 'title') {
+        const titleFontSize = Math.max(16, canvas.width * 0.014);
+        ctx.font = '800 ' + titleFontSize + 'px -apple-system, Arial, sans-serif';
+        ctx.fillStyle = '#0d3d45';
+        ctx.textBaseline = 'top';
+        ctx.fillText((item.text || '').toUpperCase(), lx, ly);
+        const w = ctx.measureText((item.text || '').toUpperCase()).width;
+        ctx.strokeStyle = '#0d3d45';
+        ctx.lineWidth = Math.max(1, titleFontSize * 0.06);
+        ctx.beginPath();
+        ctx.moveTo(lx, ly + titleFontSize * 1.1);
+        ctx.lineTo(lx + w, ly + titleFontSize * 1.1);
+        ctx.stroke();
+        return;
+      }
       const tx = item.tx / 100 * canvas.width, ty = item.ty / 100 * canvas.height;
 
-      const lines = wrapTextCanvas(ctx, item.text, maxLabelWidth);
+      const lines = wrapTextCanvas(ctx, item.text || '', maxLabelWidth);
       const textWidths = lines.map(l => ctx.measureText(l).width);
       const boxW = Math.min(maxLabelWidth, Math.max(...textWidths)) + padX * 2;
       const boxH = lines.length * lineHeight + padY * 2 - (lineHeight - fontSize);
@@ -1224,7 +1269,7 @@ function renderTitle(item) {
     if (!currentUser) return;
     try {
       // Récupère les données depuis le script principal via window
-      const clean = arr => arr.map(({id,lx,ly,tx,ty,text,fontSize}) => ({id,lx,ly,tx,ty,text,fontSize}));
+      const clean = arr => JSON.parse(JSON.stringify(arr || []));
       const rawPages = window._getPagesData ? window._getPagesData() : {};
       const cleanPages = {};
       Object.keys(rawPages).forEach(k => { cleanPages[k] = clean(rawPages[k] || []); });
@@ -1254,7 +1299,7 @@ function renderTitle(item) {
   setInterval(async () => {
     if (!currentUser) return;
     try {
-      const clean = arr => (arr||[]).map(({id,lx,ly,tx,ty,text,fontSize})=>({id,lx,ly,tx,ty,text:text||'',fontSize:fontSize||13}));
+      const clean = arr => JSON.parse(JSON.stringify(arr || []));
       const rawPages = window._getPagesData ? window._getPagesData() : {};
       const cleanPages = {};
       Object.keys(rawPages).forEach(k => { cleanPages[k] = clean(rawPages[k]); });
