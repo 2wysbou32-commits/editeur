@@ -958,8 +958,34 @@ function renderTitle(item) {
     textEl.style.textDecoration = 'underline';
         textEl.style.fontSize = (item.fontSize || 15) + 'px';
     textEl.style.fontWeight = '800';
-    textEl.style.color = '#0d3d45';
+        textEl.style.color = '#0d3d45';
     box.appendChild(textEl);
+
+    const incr = document.createElement('div');
+    incr.className = 'del no-print';
+    incr.textContent = '+';
+    incr.title = 'Agrandir le titre';
+    incr.style.cssText = 'top:-8px; left:16px; right:auto; background:var(--teal);';
+    box.appendChild(incr);
+    incr.addEventListener('click', e => {
+      e.stopPropagation();
+      saveHistory();
+      item.fontSize = Math.min(48, (item.fontSize || 15) + 2);
+      textEl.style.fontSize = item.fontSize + 'px';
+    });
+
+    const decr = document.createElement('div');
+    decr.className = 'del no-print';
+    decr.textContent = '−';
+    decr.title = 'Réduire le titre';
+    decr.style.cssText = 'top:-8px; left:34px; right:auto; background:var(--teal);';
+    box.appendChild(decr);
+    decr.addEventListener('click', e => {
+      e.stopPropagation();
+      saveHistory();
+      item.fontSize = Math.max(10, (item.fontSize || 15) - 2);
+      textEl.style.fontSize = item.fontSize + 'px';
+    });
 
     textEl.addEventListener('input', () => { item.text = textEl.textContent; });
     textEl.addEventListener('blur', () => { item.text = textEl.textContent.trim() || 'TITRE'; textEl.textContent = item.text; });
