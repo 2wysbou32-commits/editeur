@@ -611,15 +611,11 @@
       ctx.restore();
     }
 
-    const fontSize = Math.max(13, Math.round(canvas.width * 0.010));
-    const lineHeight = fontSize * 1.35;
-    const padX = fontSize * 0.55, padY = fontSize * 0.5;
+        const defaultFontSize = 13;
     const maxLabelWidth = canvas.width * 0.18;
     const arrowSize = Math.max(8, canvas.width * 0.008);
     const lineWidth = Math.max(1.5, canvas.width * 0.0016);
     const elbowOffset = Math.max(15, canvas.width * 0.012);
-
-    ctx.font = '700 ' + fontSize + 'px -apple-system, Arial, sans-serif';
 
     labelsArr.forEach(item => {
       const lx = item.lx / 100 * canvas.width, ly = item.ly / 100 * canvas.height;
@@ -653,8 +649,8 @@
         return;
       }
 
-      if (item.type === 'title') {
-        const titleFontSize = Math.max(16, canvas.width * 0.014);
+            if (item.type === 'title') {
+        const titleFontSize = Math.round(item.fontSize || 15);
         ctx.font = '800 ' + titleFontSize + 'px -apple-system, Arial, sans-serif';
         ctx.fillStyle = '#0d3d45';
         ctx.textBaseline = 'top';
@@ -668,7 +664,10 @@
         ctx.stroke();
         return;
       }
-      const tx = item.tx / 100 * canvas.width, ty = item.ty / 100 * canvas.height;
+            const tx = item.tx / 100 * canvas.width, ty = item.ty / 100 * canvas.height;
+      const fontSize = Math.round(item.fontSize || defaultFontSize);
+      const lineHeight = fontSize * 1.35;
+      const padX = fontSize * 0.55, padY = fontSize * 0.5;
 
       const lines = wrapTextCanvas(ctx, item.text || '', maxLabelWidth);
       const textWidths = lines.map(l => ctx.measureText(l).width);
@@ -763,14 +762,17 @@
       previewModal.style.display = 'flex';
 
       previewModal.querySelector('#preview-cancel').onclick = () => { previewModal.style.display = 'none'; exportBtn.disabled = false; exportBtn.textContent = oldLabel; };
-      previewModal.querySelector('#preview-confirm').onclick = () => {
+            previewModal.querySelector('#preview-confirm').onclick = () => {
         const { jsPDF } = window.jspdf;
-        let pdf = null;
-        canvases.forEach(c => {
-          const orientation = c.width >= c.height ? 'landscape' : 'portrait';
-          if (!pdf) pdf = new jsPDF({ orientation, unit: 'px', format: [c.width, c.height] });
-          else pdf.addPage([c.width, c.height], orientation);
-          pdf.addImage(c.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, c.width, c.height);
+        const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+        const pageW = pdf.internal.pageSize.getWidth();
+        const pageH = pdf.internal.pageSize.getHeight();
+        canvases.forEach((c, i) => {
+          if (i > 0) pdf.addPage('a4', 'landscape');
+          const ratio = Math.min(pageW / c.width, pageH / c.height);
+          const w = c.width * ratio, h = c.height * ratio;
+          const x = (pageW - w) / 2, y = (pageH - h) / 2;
+          pdf.addImage(c.toDataURL('image/jpeg', 0.92), 'JPEG', x, y, w, h);
         });
         pdf.save('schemas-annotes.pdf');
         previewModal.style.display = 'none';
@@ -925,7 +927,7 @@
     box.style.background = 'transparent';
     textEl.style.textTransform = 'uppercase';
     textEl.style.textDecoration = 'underline';
-    textEl.style.fontSize = '15px';
+        textEl.style.fontSize = (item.fontSize || 15) + 'px';
     textEl.style.fontWeight = '800';
     textEl.style.color = '#0d3d45';
   };
@@ -954,7 +956,7 @@ function renderTitle(item) {
     textEl.textContent = item.text;
     textEl.style.textTransform = 'uppercase';
     textEl.style.textDecoration = 'underline';
-    textEl.style.fontSize = '15px';
+        textEl.style.fontSize = (item.fontSize || 15) + 'px';
     textEl.style.fontWeight = '800';
     textEl.style.color = '#0d3d45';
     box.appendChild(textEl);
