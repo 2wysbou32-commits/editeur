@@ -62,7 +62,8 @@
   .canvas-wrap.panning { cursor: grabbing; }
   .canvas-wrap img { display: block; max-width: none; height: auto; user-select: none; border-radius: 4px; }
   .canvas-wrap.placing { cursor: crosshair; }
-  .lines-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+    .lines-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+  #placement-guide { stroke: #ff5a5f; stroke-width: 1; stroke-dasharray: 5,4; display: none; }
 
   /* LABELS */
   .label-box { position: absolute; max-width: 220px; background: white; border-radius: 4px; padding: 4px 8px 4px 22px; }
@@ -160,7 +161,7 @@
     </div>
     <div class="canvas-wrap" id="canvas-wrap" style="display:none">
       <img id="main-img" alt="schéma">
-      <svg class="lines-layer" id="lines-layer"></svg>
+            <svg class="lines-layer" id="lines-layer"><line id="placement-guide" x1="0" y1="0" x2="0" y2="0"></line></svg>
     </div>
   </div>
 
@@ -300,11 +301,25 @@
   prevPageBtn.addEventListener('click', () => goToPage(-1));
   nextPageBtn.addEventListener('click', () => goToPage(1));
 
+    const placementGuide = document.getElementById('placement-guide');
+
   addBtn.addEventListener('click', () => {
     placing = !placing;
     wrap.classList.toggle('placing', placing);
     addBtn.classList.toggle('active', placing);
     addBtn.textContent = placing ? 'Clique sur le schéma…' : '+ Ajouter une étiquette';
+    if (!placing) placementGuide.style.display = 'none';
+  });
+
+  wrap.addEventListener('mousemove', e => {
+    if (!placing) return;
+    const rect = wrap.getBoundingClientRect();
+    const gx = e.clientX - rect.left;
+    placementGuide.setAttribute('x1', gx);
+    placementGuide.setAttribute('x2', gx);
+    placementGuide.setAttribute('y1', 0);
+    placementGuide.setAttribute('y2', rect.height);
+    placementGuide.style.display = 'block';
   });
 
   wrap.addEventListener('click', e => {
@@ -326,6 +341,7 @@
     wrap.classList.remove('placing');
     addBtn.classList.remove('active');
     addBtn.textContent = '+ Ajouter une étiquette';
+    placementGuide.style.display = 'none';
     renderAll();
     focusLabel(id);
   });
@@ -441,15 +457,18 @@
       const hw = boxRect.width / 2;
       const tx = item.tx / 100 * rect.width, ty = item.ty / 100 * rect.height;
 
-      // Sortie horizontale depuis le bord gauche ou droit selon la position de la cible
+            // Sortie horizontale depuis le bord gauche ou droit selon la position de la cible
       const exitRight = tx >= cx;
       const ex = exitRight ? cx + hw : cx - hw;
       const ey = cy;
       // Point de coude : même y que le label, décalé de 12px vers la cible
       const elbowX = exitRight ? ex + 12 : ex - 12;
       const elbowY = ey;
+      // Petit bout horizontal juste avant le point, parallèle au texte des étiquettes
+      const stubLen = Math.max(14, (item.fontSize || 13) * 1.1);
+      const stubX = exitRight ? tx - stubLen : tx + stubLen;
 
-      const d = 'M ' + ex + ',' + ey + ' L ' + elbowX + ',' + elbowY + ' L ' + tx + ',' + ty;
+      const d = 'M ' + ex + ',' + ey + ' L ' + elbowX + ',' + elbowY + ' L ' + stubX + ',' + ty + ' L ' + tx + ',' + ty;
 
       let path = svg.querySelector('#line-' + item.id);
       if (!path) {
@@ -674,12 +693,15 @@
       const boxW = Math.min(maxLabelWidth, Math.max(...textWidths)) + padX * 2;
       const boxH = lines.length * lineHeight + padY * 2 - (lineHeight - fontSize);
 
-      const cx = lx + boxW / 2, cy = ly + boxH / 2;
+            const cx = lx + boxW / 2, cy = ly + boxH / 2;
       const exitRight = tx >= cx;
       const ex = exitRight ? cx + boxW / 2 : cx - boxW / 2;
       const ey = cy;
       const elbowX = exitRight ? ex + elbowOffset : ex - elbowOffset;
       const elbowY = ey;
+      // Petit bout horizontal juste avant le point, parallèle au texte des étiquettes
+      const stubLen = Math.max(14, fontSize * 1.1);
+      const stubX = exitRight ? tx - stubLen : tx + stubLen;
 
       // Flèche coudée noire
       ctx.lineCap = 'round';
@@ -689,9 +711,10 @@
       ctx.beginPath();
       ctx.moveTo(ex, ey);
       ctx.lineTo(elbowX, elbowY);
+      ctx.lineTo(stubX, ty);
       ctx.lineTo(tx, ty);
       ctx.stroke();
-      drawArrowheadCanvas(ctx, elbowX, elbowY, tx, ty, arrowSize, '#000');
+      drawArrowheadCanvas(ctx, stubX, ty, tx, ty, arrowSize, '#000');
 
       // Boîte sans bordure — fond blanc uniquement
       ctx.fillStyle = '#ffffff';
@@ -1167,7 +1190,7 @@ function renderTitle(item) {
   document.addEventListener('keydown', e => {
     if (e.target.isContentEditable || e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
     if (e.key === 'a' || e.key === 'A') { if (!addBtn.disabled) addBtn.click(); }
-    if (e.key === 'Escape') { placing = false; wrap.classList.remove('placing'); addBtn.classList.remove('active'); addBtn.textContent = '+ Ajouter une étiquette (A)'; }
+        if (e.key === 'Escape') { placing = false; wrap.classList.remove('placing'); addBtn.classList.remove('active'); addBtn.textContent = '+ Ajouter une étiquette (A)'; placementGuide.style.display = 'none'; }
     if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); if (history.length) { labels = JSON.parse(history.pop()); renderAll(); } }
   });
 
