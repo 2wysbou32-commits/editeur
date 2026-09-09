@@ -715,7 +715,7 @@
             const cx = lx + boxW / 2, cy = ly + boxH / 2;
       const exitRight = tx >= cx;
       const ex = exitRight ? cx + boxW / 2 : cx - boxW / 2;
-      const ey = cy;
+      const ey = cy + fontSize * 0.15;
       const elbowX = exitRight ? ex + elbowOffset : ex - elbowOffset;
       const elbowY = ey;
       // Petit bout horizontal juste avant le point, parallèle au texte des étiquettes
@@ -981,12 +981,13 @@ function renderTitle(item) {
     box.style.left = item.lx + '%';
     box.style.top = item.ly + '%';
     box.style.background = 'transparent';
-    box.style.padding = '4px 8px 4px 22px';
+    box.style.padding = '0';
     box.style.maxWidth = '600px';
     box.style.width = 'max-content';
 
     const grip = document.createElement('div');
     grip.className = 'grip no-print'; grip.textContent = '✥';
+    grip.style.cssText = 'left:-8px; top:-8px; right:auto;';
     box.appendChild(grip);
 
     const del = document.createElement('div');
