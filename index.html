@@ -291,7 +291,7 @@
 
   async function renderPdfPageToCanvas(pageNum, scale) {
     const page = await pdfDoc.getPage(pageNum);
-    const viewport = page.getViewport({scale: scale || 2});
+    const viewport = page.getViewport({scale: scale || 1});
     const canvas = document.createElement('canvas');
     canvas.width = viewport.width; canvas.height = viewport.height;
     await page.render({canvasContext: canvas.getContext('2d'), viewport}).promise;
@@ -299,7 +299,7 @@
   }
 
   async function renderPdfPage() {
-    const canvas = await renderPdfPageToCanvas(pdfPageNum, 2);
+    const canvas = await renderPdfPageToCanvas(pdfPageNum, 1);
     pageLabel.textContent = 'Page ' + pdfPageNum + ' / ' + pdfDoc.numPages;
     img.onload = onBackgroundReady;
     img.src = canvas.toDataURL('image/png');
@@ -820,7 +820,7 @@
         pagesData[pdfPageNum] = labels;
         for (let p = 1; p <= pdfDoc.numPages; p++) {
           exportBtn.textContent = 'Préparation page ' + p + ' / ' + pdfDoc.numPages + '…';
-          const sourceCanvas = (p === pdfPageNum) ? img : await renderPdfPageToCanvas(p, 2);
+          const sourceCanvas = (p === pdfPageNum) ? img : await renderPdfPageToCanvas(p, 1);
           const pageLabels = pagesData[p] || [];
           canvases.push(buildExportCanvas(sourceCanvas, pageLabels));
         }
@@ -1201,7 +1201,7 @@ function renderTitle(item) {
           const titleItem = pageLabels.find(l => l.type === 'title');
           const titre = titleItem ? titleItem.text : ('Schéma ' + p);
           const base = reserveName(slugify(titre));
-          const sourceCanvas = (p === pdfPageNum) ? img : await renderPdfPageToCanvas(p, 2);
+          const sourceCanvas = (p === pdfPageNum) ? img : await renderPdfPageToCanvas(p, 1);
           const blank = blankCanvasFrom(sourceCanvas);
           zip.file(base + '.png', blank.toDataURL('image/png').split(',')[1], { base64: true });
           zip.file(base + '.json', JSON.stringify(buildRepereJSON(pageLabels, titre, base + '.png'), null, 2));
