@@ -125,7 +125,7 @@
 
     <select id="font-size-select" disabled style="border:none;background:var(--gray);border-radius:9px;padding:8px 10px;font-size:12.5px;color:var(--text);cursor:pointer;">
       <option value="11">Petit</option>
-      <option value="13" selected>Moyen</option>
+      <option value="15" selected>Moyen</option>
       <option value="16">Grand</option>
     </select>
 
@@ -191,7 +191,7 @@
   let idCounter = 0;
   function saveHistory() { history.push(JSON.stringify(labels)); if (history.length > 50) history.shift(); }
   let history = [];
-  let labelFontSize = 13;
+  let labelFontSize = 15;
   const TERMS = ['Aorte','Artère carotide','Artère fémorale','Artère radiale','Artère ulnaire','Cerveau','Cervelet','Côlon ascendant','Côlon descendant','Côlon sigmoïde','Diaphragme','Duodénum','Estomac','Fémur','Fibula','Foie','Humérus','Intestin grêle','Jéjunum','Ligament croisé antérieur','Ligament croisé postérieur','Lobe frontal','Lobe occipital','Lobe pariétal','Lobe temporal','Moelle épinière','Nerf cubital','Nerf médian','Nerf radial','Nerf sciatique','Oesophage','Os iliaque','Pancréas','Patella','Péroné','Processus xyphoïde','Pubis','Radius','Rate','Rectum','Rein gauche','Rein droit','Sacrum','Sternum','Tibia','Trachée','Ulna','Uretère','Utérus','Veine cave inférieure','Veine cave supérieure','Vésicule biliaire','Vessie'];
   let pdfDoc = null;
   let pdfPageNum = 1;
@@ -422,12 +422,40 @@
       renderAll();
     });
 
-    const textEl = document.createElement('div');
+        const textEl = document.createElement('div');
     textEl.className = 'label-text';
     if (item.fontSize) textEl.style.fontSize = item.fontSize + 'px';
     textEl.contentEditable = 'true';
     textEl.textContent = item.text;
     box.appendChild(textEl);
+
+    const incr = document.createElement('div');
+    incr.className = 'del no-print';
+    incr.textContent = '+';
+    incr.title = 'Agrandir';
+    incr.style.cssText = 'top:-8px; left:14px; right:auto; background:var(--teal);';
+    box.appendChild(incr);
+    incr.addEventListener('click', e => {
+      e.stopPropagation();
+      saveHistory();
+      item.fontSize = Math.min(32, (item.fontSize || labelFontSize) + 1);
+      textEl.style.fontSize = item.fontSize + 'px';
+      updateLine();
+    });
+
+    const decr = document.createElement('div');
+    decr.className = 'del no-print';
+    decr.textContent = '−';
+    decr.title = 'Réduire';
+    decr.style.cssText = 'top:-8px; left:32px; right:auto; background:var(--teal);';
+    box.appendChild(decr);
+    decr.addEventListener('click', e => {
+      e.stopPropagation();
+      saveHistory();
+      item.fontSize = Math.max(9, (item.fontSize || labelFontSize) - 1);
+      textEl.style.fontSize = item.fontSize + 'px';
+      updateLine();
+    });
     // Bulle d'autocomplétion
     const suggest = document.createElement('div');
     suggest.style.cssText = 'display:none;position:absolute;top:100%;left:0;background:white;border:1px solid #cce8ec;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.1);z-index:500;min-width:180px;max-height:160px;overflow-y:auto;';
@@ -686,18 +714,25 @@
         return;
       }
 
-            if (item.type === 'title') {
+              if (item.type === 'title') {
         const titleFontSize = Math.round(item.fontSize || 15);
         ctx.font = '800 ' + titleFontSize + 'px -apple-system, Arial, sans-serif';
         ctx.fillStyle = '#0d3d45';
         ctx.textBaseline = 'top';
-        ctx.fillText((item.text || '').toUpperCase(), lx, ly);
-        const w = ctx.measureText((item.text || '').toUpperCase()).width;
+        const maxTitleWidth = canvas.width * 0.9;
+        const titleLines = wrapTextCanvas(ctx, (item.text || '').toUpperCase(), maxTitleWidth);
+        const titleLineHeight = titleFontSize * 1.25;
+        let maxLineW = 0;
+        titleLines.forEach((line, i) => {
+          ctx.fillText(line, lx, ly + i * titleLineHeight);
+          maxLineW = Math.max(maxLineW, ctx.measureText(line).width);
+        });
+        const underlineY = ly + (titleLines.length - 1) * titleLineHeight + titleFontSize * 1.1;
         ctx.strokeStyle = '#0d3d45';
         ctx.lineWidth = Math.max(1, titleFontSize * 0.06);
         ctx.beginPath();
-        ctx.moveTo(lx, ly + titleFontSize * 1.1);
-        ctx.lineTo(lx + w, ly + titleFontSize * 1.1);
+        ctx.moveTo(lx, underlineY);
+        ctx.lineTo(lx + maxLineW, underlineY);
         ctx.stroke();
         return;
       }
@@ -982,7 +1017,7 @@ function renderTitle(item) {
     box.style.top = item.ly + '%';
     box.style.background = 'transparent';
     box.style.padding = '0';
-    box.style.maxWidth = '600px';
+    box.style.maxWidth = '90%';
     box.style.width = 'max-content';
 
     const grip = document.createElement('div');
