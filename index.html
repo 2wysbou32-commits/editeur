@@ -424,7 +424,7 @@
 
         const textEl = document.createElement('div');
     textEl.className = 'label-text';
-    if (item.fontSize) textEl.style.fontSize = item.fontSize + 'px';
+    if (item.fontSize) textEl.style.fontSize = (item.fontSize * zoomLevel) + 'px';
     textEl.contentEditable = 'true';
     textEl.textContent = item.text;
     box.appendChild(textEl);
@@ -439,7 +439,7 @@
       e.stopPropagation();
       saveHistory();
       item.fontSize = Math.min(32, (item.fontSize || labelFontSize) + 1);
-      textEl.style.fontSize = item.fontSize + 'px';
+      textEl.style.fontSize = (item.fontSize * zoomLevel) + 'px';
       updateLine();
     });
 
@@ -453,7 +453,7 @@
       e.stopPropagation();
       saveHistory();
       item.fontSize = Math.max(9, (item.fontSize || labelFontSize) - 1);
-      textEl.style.fontSize = item.fontSize + 'px';
+      textEl.style.fontSize = (item.fontSize * zoomLevel) + 'px';
       updateLine();
     });
     // Bulle d'autocomplétion
