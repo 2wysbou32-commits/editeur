@@ -1419,7 +1419,7 @@ function renderTitle(item) {
         pdfPageNum: window._getPageNum ? window._getPageNum() : 1,
         savedAt: new Date().toISOString()
       });
-      msg('Sauvegarde auto ✓', 2000);
+      fbMsg.textContent = 'Sauvegarde auto ✓';
     } catch(e) { console.warn('Sauvegarde auto échouée:', e.message); }
   }, 3 * 60 * 1000);
 </script>
