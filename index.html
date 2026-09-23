@@ -211,6 +211,9 @@
   const SVG_NS = 'http://www.w3.org/2000/svg';
   let docW = 0, docH = 0;
   let baseFontSize = 18;
+   // Feuille A4 paysage à 96 dpi : 100 % = taille réelle sur la feuille imprimée
+  const A4_W = 297 / 25.4 * 96, A4_H = 210 / 25.4 * 96;
+  function fitA4(w, h) { const k = Math.min(A4_W / w, A4_H / h); return { w: w * k, h: h * k, k }; }
 
   const _mctx = document.createElement('canvas').getContext('2d');
   const _metricCache = {};
@@ -414,7 +417,7 @@
     pageNav.style.display = 'none';
     const reader = new FileReader();
     reader.onload = ev => {
-      img.onload = () => { docW = img.naturalWidth; docH = img.naturalHeight; onBackgroundReady(); };
+      img.onload = () => { const f = fitA4(img.naturalWidth, img.naturalHeight); docW = f.w; docH = f.h; onBackgroundReady(); };
       img.src = ev.target.result;
     };
     reader.readAsDataURL(f);
@@ -451,11 +454,13 @@
 
   async function renderPdfPageToCanvas(pageNum) {
     const page = await pdfDoc.getPage(pageNum);
-    const base = page.getViewport({scale: PDF_BASE_SCALE});
+    const raw = page.getViewport({scale: 1});
+    const fit = fitA4(raw.width, raw.height);
+    const base = { width: fit.w, height: fit.h };
     let over = PDF_OVERSAMPLE;
     const area = base.width * base.height;
     if (area * over * over > MAX_CANVAS_PX) over = Math.sqrt(MAX_CANVAS_PX / area);
-    const viewport = page.getViewport({scale: PDF_BASE_SCALE * over});
+    const viewport = page.getViewport({scale: fit.k * over});
     const canvas = document.createElement('canvas');
     canvas.width = Math.floor(viewport.width); canvas.height = Math.floor(viewport.height);
     const ctx = canvas.getContext('2d');
@@ -943,13 +948,13 @@
       });
       previewModal.style.display = 'flex';
 
-      previewModal.querySelector('#preview-cancel').onclick = () => { previewModal.style.display = 'none'; exportBtn.disabled = false; exportBtn.textContent = oldLabel; };
-            previewModal.querySelector('#preview-confirm').onclick = () => {
-        const { jsPDF } = window.jspdf;
-        const pw = c => c.docW * 0.75, ph = c => c.docH * 0.75;
-        const orient = c => pw(c) > ph(c) ? 'landscape' : 'portrait';
-        const pdf = new jsPDF({ unit: 'pt', format: [pw(canvases[0]), ph(canvases[0])], orientation: orient(canvases[0]), compress: true });
+        const pdf = new jsPDF({ unit: 'pt', format: 'a4', orientation: 'landscape', compress: true });
+        const pageW = pdf.internal.pageSize.getWidth(), pageH = pdf.internal.pageSize.getHeight();
         canvases.forEach((c, i) => {
+          if (i > 0) pdf.addPage('a4', 'landscape');
+          const w = c.docW * 0.75, h = c.docH * 0.75;
+          pdf.addImage(c.toDataURL('image/jpeg', 0.95), 'JPEG', (pageW - w) / 2, (pageH - h) / 2, w, h, undefined, 'NONE');
+        });
           if (i > 0) pdf.addPage([pw(c), ph(c)], orient(c));
           pdf.addImage(c.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, pw(c), ph(c), undefined, 'NONE');
         });
