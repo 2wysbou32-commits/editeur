@@ -67,11 +67,12 @@
   .logo-zone { position: absolute; border: 2px dashed #ff5a5f; border-radius: 8px; background: rgba(255,90,95,0.08); pointer-events: none; display: none; }
 
   /* LABELS */
-  .label-box { position: absolute; max-width: 220px; background: white; border-radius: 4px; padding: 4px 8px 4px 22px; }
-  .label-box .label-text { font-size: 13px; font-weight: 700; color: #111; line-height: 1.3; cursor: text; outline: none; }
-  .label-box .grip { position: absolute; left: 3px; top: 5px; width: 16px; height: 16px; border-radius: 4px; background: var(--teal); color: white; font-size: 10px; display: flex; align-items: center; justify-content: center; cursor: move; touch-action: none; }
+  .label-box { position: absolute; box-sizing: border-box; width: max-content; background: white; }
+  .label-box .label-text { color: #111; cursor: text; outline: none; white-space: normal; overflow-wrap: normal; word-break: normal; }
+  .label-box .grip { position: absolute; left: -21px; top: 0; width: 16px; height: 16px; border-radius: 4px; background: var(--teal); color: white; font-size: 10px; display: flex; align-items: center; justify-content: center; cursor: move; touch-action: none; }
   .label-box .del { position: absolute; top: -8px; right: -8px; width: 17px; height: 17px; border-radius: 50%; background: var(--red); color: white; font-size: 10px; line-height: 17px; text-align: center; cursor: pointer; }
-  .target-dot { position: absolute; width: 11px; height: 11px; margin-left: -5.5px; margin-top: -5.5px; border-radius: 50%; background: var(--teal); box-shadow: 0 0 0 2px white; cursor: move; touch-action: none; }
+  .target-dot { position: absolute; width: 14px; height: 14px; margin-left: -7px; margin-top: -7px; border-radius: 50%; background: rgba(18,163,184,0.25); border: 2px solid var(--teal); box-shadow: 0 0 0 1px white; cursor: move; touch-action: none; }
+  .zoom-pct { cursor: pointer; }
 
   /* SPLASH */
   .splash { position: fixed; inset: 0; background: rgba(10,55,65,0.6); display: flex; align-items: center; justify-content: center; z-index: 9999; backdrop-filter: blur(3px); }
@@ -124,16 +125,16 @@
     </div>
 
     <select id="font-size-select" disabled style="border:none;background:var(--gray);border-radius:9px;padding:8px 10px;font-size:12.5px;color:var(--text);cursor:pointer;">
-      <option value="11">Petit</option>
-      <option value="15" selected>Moyen</option>
-      <option value="16">Grand</option>
+      <option value="0.8">Petit</option>
+      <option value="1" selected>Moyen</option>
+      <option value="1.3">Grand</option>
     </select>
 
     <div class="sep"></div>
 
     <div class="btn-group">
       <button class="btn-icon" id="zoom-out-btn" disabled title="Zoom arrière">−</button>
-      <span class="zoom-pct" id="zoom-level">100%</span>
+      <span class="zoom-pct" id="zoom-level" title="Cliquer pour revenir à 100 % (taille réelle)">100%</span>
       <button class="btn-icon" id="zoom-in-btn" disabled title="Zoom avant">+</button>
       <button class="btn-icon" id="zoom-reset-btn" disabled title="Ajuster à l'écran">⤢</button>
       <button class="btn-icon" id="toggle-labels-btn" disabled title="Masquer les étiquettes">👁</button>
@@ -198,6 +199,163 @@
   let pagesData = {};
   let importedFileName = '';
   const PDFJS_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+
+  
+  // ── GÉOMÉTRIE PARTAGÉE ÉCRAN / EXPORT ──────────────────
+  const LABEL_FONT = 'Arial, "Helvetica Neue", Helvetica, sans-serif';
+  const PDF_BASE_SCALE = 96 / 72;
+  const PDF_OVERSAMPLE = 3;
+  const MAX_CANVAS_PX = 16e6;
+  const LBL = { lineH: 1.3, padX: 0.5, padY: 0.3, radius: 0.25 };
+  const TITLE_LINE_H = 1.25;
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  let docW = 0, docH = 0;
+  let baseFontSize = 18;
+
+  const _mctx = document.createElement('canvas').getContext('2d');
+  const _metricCache = {};
+  function fontStr(weight, fs) { return weight + ' ' + fs + 'px ' + LABEL_FONT; }
+  function fontMetrics(weight, fs) {
+    if (!_metricCache[weight]) {
+      _mctx.font = fontStr(weight, 100);
+      const m = _mctx.measureText('Hgjpqy');
+      const asc = m.fontBoundingBoxAscent != null ? m.fontBoundingBoxAscent : m.actualBoundingBoxAscent * 1.12;
+      const desc = m.fontBoundingBoxDescent != null ? m.fontBoundingBoxDescent : m.actualBoundingBoxDescent * 1.12;
+      _metricCache[weight] = { asc: asc / 100, desc: desc / 100 };
+    }
+    const c = _metricCache[weight];
+    return { asc: c.asc * fs, desc: c.desc * fs };
+  }
+  function labelFs(item) { return item.fontSize || baseFontSize; }
+  function labelMaxW(fs, dW) { return Math.max(dW * 0.3, fs * 6); }
+  function arrowStyle(fs) {
+    const lineW = Math.max(1, fs * 0.09);
+    const headLen = Math.max(6, fs * 0.6);
+    return { lineW, headLen, headHalf: headLen * 0.38, elbow: Math.max(8, fs * 0.8) };
+  }
+  function arrowHead(x0, y0, x1, y1, a) {
+    const dx = x1 - x0, dy = y1 - y0;
+    const len = Math.hypot(dx, dy) || 1;
+    const ux = dx / len, uy = dy / len;
+    const hl = Math.min(a.headLen, len);
+    const hh = a.headHalf * hl / a.headLen;
+    const bx = x1 - ux * hl, by = y1 - uy * hl;
+    return {
+      tip: [x1, y1],
+      left: [bx - uy * hh, by + ux * hh],
+      right: [bx + uy * hh, by - ux * hh],
+      lineEnd: [x1 - ux * hl * 0.75, y1 - uy * hl * 0.75]
+    };
+  }
+  function labelArrowGeom(item, b, dW, dH) {
+    const a = arrowStyle(labelFs(item));
+    const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+    const tx = item.tx / 100 * dW, ty = item.ty / 100 * dH;
+    const right = tx >= cx;
+    const ex = right ? b.x + b.w : b.x;
+    const elbowX = right ? ex + a.elbow : ex - a.elbow;
+    const head = arrowHead(elbowX, cy, tx, ty, a);
+    return { lineW: a.lineW, pts: [[ex, cy], [elbowX, cy], head.lineEnd], heads: [head] };
+  }
+  function repereGeom(item, ox, oy) {
+    const fs = item.fontSize || Math.max(11, Math.round(baseFontSize * 0.8));
+    const a = arrowStyle(fs);
+    const size = fs * 3.5, gap = fs * 0.35;
+    const dirs = { ul:['up','left'], ur:['up','right'], dl:['down','left'], dr:['down','right'] };
+    const [d1, d2] = dirs[item.key] || ['up','right'];
+    const isUp = d1 === 'up', isRight = d2 === 'right';
+    const vx = ox, vy = isUp ? oy - size : oy + size;
+    const hx = isRight ? ox + size : ox - size, hy = oy;
+    const h1 = arrowHead(ox, oy, vx, vy, a), h2 = arrowHead(ox, oy, hx, hy, a);
+    const m = fontMetrics(700, fs);
+    return {
+      fs, isUp, isRight,
+      arrow: { lineW: a.lineW, pts: [h1.lineEnd, [ox, oy], h2.lineEnd], heads: [h1, h2] },
+      texts: [
+        { text: item.label1 || '', x: vx, y: isUp ? vy - gap - m.desc : vy + gap + m.asc, anchor: 'middle' },
+        { text: item.label2 || '', x: isRight ? hx + gap : hx - gap, y: hy + (m.asc - m.desc) / 2, anchor: isRight ? 'start' : 'end' }
+      ]
+    };
+  }
+  function drawSvgArrow(parent, id, g, z) {
+    let grp = id ? parent.querySelector('#' + id) : null;
+    if (!grp) {
+      grp = document.createElementNS(SVG_NS, 'g');
+      if (id) grp.id = id;
+      const p = document.createElementNS(SVG_NS, 'path');
+      p.setAttribute('fill', 'none'); p.setAttribute('stroke', '#000');
+      p.setAttribute('stroke-linecap', 'butt'); p.setAttribute('stroke-linejoin', 'round');
+      grp.appendChild(p);
+      parent.appendChild(grp);
+    }
+    const p = grp.querySelector('path');
+    p.setAttribute('d', 'M ' + g.pts.map(q => (q[0] * z) + ',' + (q[1] * z)).join(' L '));
+    p.setAttribute('stroke-width', g.lineW * z);
+    grp.querySelectorAll('polygon').forEach(el => el.remove());
+    g.heads.forEach(h => {
+      const poly = document.createElementNS(SVG_NS, 'polygon');
+      poly.setAttribute('fill', '#000');
+      poly.setAttribute('points', [h.tip, h.left, h.right].map(q => (q[0] * z) + ',' + (q[1] * z)).join(' '));
+      grp.appendChild(poly);
+    });
+    return grp;
+  }
+  function drawCanvasArrow(ctx, g) {
+    ctx.save();
+    ctx.strokeStyle = '#000'; ctx.fillStyle = '#000';
+    ctx.lineWidth = g.lineW; ctx.lineCap = 'butt'; ctx.lineJoin = 'round';
+    ctx.beginPath();
+    g.pts.forEach((q, i) => i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]));
+    ctx.stroke();
+    g.heads.forEach(h => {
+      ctx.beginPath();
+      ctx.moveTo(h.tip[0], h.tip[1]); ctx.lineTo(h.left[0], h.left[1]); ctx.lineTo(h.right[0], h.right[1]);
+      ctx.closePath(); ctx.fill();
+    });
+    ctx.restore();
+  }
+  function domLines(el, fsPx) {
+    const lines = []; let cur = ''; let lastTop = null;
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    const r = document.createRange(); let node;
+    while ((node = walker.nextNode())) {
+      const t = node.textContent;
+      for (let i = 0; i < t.length; i++) {
+        const ch = t[i];
+        if (/\S/.test(ch)) {
+          r.setStart(node, i); r.setEnd(node, i + 1);
+          const rects = r.getClientRects();
+          if (rects.length) {
+            const top = rects[0].top;
+            if (lastTop !== null && top > lastTop + fsPx * 0.5) { lines.push(cur); cur = ''; }
+            lastTop = top;
+          }
+        }
+        cur += ch;
+      }
+    }
+    lines.push(cur);
+    const out = lines.map(s => s.replace(/\s+/g, ' ').trim()).filter(s => s.length);
+    return out.length ? out : [''];
+  }
+  function applyLabelBoxStyle(box, textEl, item) {
+    const fs = labelFs(item), z = zoomLevel;
+    box.style.padding = (fs * LBL.padY * z) + 'px ' + (fs * LBL.padX * z) + 'px';
+    box.style.maxWidth = (labelMaxW(fs, docW) * z) + 'px';
+    box.style.borderRadius = (fs * LBL.radius * z) + 'px';
+    textEl.style.font = fontStr(700, fs * z);
+    textEl.style.lineHeight = String(LBL.lineH);
+  }
+  function titleFs(item) { return item.fontSize || Math.round(baseFontSize * 1.4); }
+  function applyTitleStyle(box, textEl, item) {
+    const fs = titleFs(item), z = zoomLevel;
+    box.style.maxWidth = (docW * 0.9 * z) + 'px';
+    box.style.font = fontStr(800, fs * z);
+    box.style.lineHeight = String(TITLE_LINE_H);
+    textEl.style.font = fontStr(800, fs * z);
+    textEl.style.lineHeight = String(TITLE_LINE_H);
+    textEl.style.borderBottom = (Math.max(1, fs * 0.06) * z) + 'px solid #0d3d45';
+  }
   
   uploadBtn.addEventListener('click', () => fileInput.click());
   fileInput.addEventListener('change', e => {
@@ -213,11 +371,11 @@
 
     function updateLogoZone() {
     const zone = document.getElementById('logo-zone');
-    if (!zone || !img.naturalWidth || !img.naturalHeight) return;
+    if (!zone || !docW || !docH) return;
     const marginPct = 2;
     const logoWPct = 5;
-    const marginTopPct = (img.naturalWidth * 0.02) / img.naturalHeight * 100;
-    const logoHPct = (img.naturalWidth * 0.05) / img.naturalHeight * 100;
+    const marginTopPct = (docW * 0.02) / docH * 100;
+    const logoHPct = (docW * 0.05) / docH * 100;
     zone.style.left = marginPct + '%';
     zone.style.top = marginTopPct + '%';
     zone.style.width = logoWPct + '%';
@@ -242,6 +400,8 @@
     document.getElementById('zoom-reset-btn').disabled = false;
     document.getElementById('toggle-labels-btn').disabled = false;
     document.getElementById('revision-btn').disabled = false;
+    baseFontSize = Math.max(14, Math.round(Math.sqrt(docW * docH) / 50));
+    labelFontSize = Math.round(baseFontSize * parseFloat(fontSizeSelect.value || '1'));
     resetZoom();
     fitMainHeight();
     updateLogoZone();
@@ -254,7 +414,7 @@
     pageNav.style.display = 'none';
     const reader = new FileReader();
     reader.onload = ev => {
-      img.onload = onBackgroundReady;
+      img.onload = () => { docW = img.naturalWidth; docH = img.naturalHeight; onBackgroundReady(); };
       img.src = ev.target.result;
     };
     reader.readAsDataURL(f);
@@ -289,20 +449,30 @@
     }
   }
 
-  async function renderPdfPageToCanvas(pageNum, scale) {
+  async function renderPdfPageToCanvas(pageNum) {
     const page = await pdfDoc.getPage(pageNum);
-    const viewport = page.getViewport({scale: scale || 1});
+    const base = page.getViewport({scale: PDF_BASE_SCALE});
+    let over = PDF_OVERSAMPLE;
+    const area = base.width * base.height;
+    if (area * over * over > MAX_CANVAS_PX) over = Math.sqrt(MAX_CANVAS_PX / area);
+    const viewport = page.getViewport({scale: PDF_BASE_SCALE * over});
     const canvas = document.createElement('canvas');
-    canvas.width = viewport.width; canvas.height = viewport.height;
-    await page.render({canvasContext: canvas.getContext('2d'), viewport}).promise;
-    return canvas;
+    canvas.width = Math.floor(viewport.width); canvas.height = Math.floor(viewport.height);
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    await page.render({canvasContext: ctx, viewport}).promise;
+    return { canvas, docW: base.width, docH: base.height };
   }
 
+  let _pageUrl = null;
   async function renderPdfPage() {
-    const canvas = await renderPdfPageToCanvas(pdfPageNum, 1);
+    const r = await renderPdfPageToCanvas(pdfPageNum);
     pageLabel.textContent = 'Page ' + pdfPageNum + ' / ' + pdfDoc.numPages;
-    img.onload = onBackgroundReady;
-    img.src = canvas.toDataURL('image/png');
+    const blob = await new Promise(res => r.canvas.toBlob(res, 'image/png'));
+    if (_pageUrl) URL.revokeObjectURL(_pageUrl);
+    _pageUrl = URL.createObjectURL(blob);
+    img.onload = () => { docW = r.docW; docH = r.docH; onBackgroundReady(); };
+    img.src = _pageUrl;
   }
 
   function goToPage(delta) {
@@ -383,9 +553,8 @@
 
   function renderAll() {
     wrap.querySelectorAll('.label-box, .target-dot').forEach(el => el.remove());
-    svg.innerHTML = '<defs>' +
-      '<marker id="arrowhead" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#000"/></marker>' +
-      '</defs>';
+  svg.innerHTML = '';
+    svg.appendChild(placementGuide);
     labels.forEach(item => {
       if (item.type === 'repere') renderRepere(item);
       else if (item.type === 'title') renderTitle(item);
@@ -422,12 +591,13 @@
       renderAll();
     });
 
-        const textEl = document.createElement('div');
+      const textEl = document.createElement('div');
     textEl.className = 'label-text';
-    if (item.fontSize) textEl.style.fontSize = (item.fontSize * zoomLevel) + 'px';
+    if (!item.fontSize) item.fontSize = baseFontSize;
     textEl.contentEditable = 'true';
     textEl.textContent = item.text;
     box.appendChild(textEl);
+    applyLabelBoxStyle(box, textEl, item);
 
     const incr = document.createElement('div');
     incr.className = 'del no-print';
@@ -438,8 +608,9 @@
     incr.addEventListener('click', e => {
       e.stopPropagation();
       saveHistory();
-      item.fontSize = Math.min(32, (item.fontSize || labelFontSize) + 1);
-      textEl.style.fontSize = (item.fontSize * zoomLevel) + 'px';
+      const fs = labelFs(item);
+      item.fontSize = Math.min(400, fs + Math.max(1, Math.round(fs * 0.1)));
+      applyLabelBoxStyle(box, textEl, item);
       updateLine();
     });
 
@@ -452,8 +623,9 @@
     decr.addEventListener('click', e => {
       e.stopPropagation();
       saveHistory();
-      item.fontSize = Math.max(9, (item.fontSize || labelFontSize) - 1);
-      textEl.style.fontSize = (item.fontSize * zoomLevel) + 'px';
+      const fs = labelFs(item);
+      item.fontSize = Math.max(6, fs - Math.max(1, Math.round(fs * 0.1)));
+      applyLabelBoxStyle(box, textEl, item);
       updateLine();
     });
     // Bulle d'autocomplétion
@@ -494,37 +666,10 @@
     wrap.appendChild(dot);
     if (window._patchTitleStyle) window._patchTitleStyle(box, textEl, item);
 
-    function updateLine() {
-      const rect = wrap.getBoundingClientRect();
-      const boxRect = box.getBoundingClientRect();
-      const cx = boxRect.left + boxRect.width / 2 - rect.left;
-      const cy = boxRect.top + boxRect.height / 2 - rect.top;
-      const hw = boxRect.width / 2;
-      const tx = item.tx / 100 * rect.width, ty = item.ty / 100 * rect.height;
-
-            // Sortie horizontale depuis le bord gauche ou droit selon la position de la cible
-      const exitRight = tx >= cx;
-      const ex = exitRight ? cx + hw : cx - hw;
-      const ey = cy;
-      // Point de coude : même y que le label, décalé de 12px vers la cible
-      const elbowX = exitRight ? ex + 12 : ex - 12;
-      const elbowY = ey;
-
-      const d = 'M ' + ex + ',' + ey + ' L ' + elbowX + ',' + elbowY + ' L ' + tx + ',' + ty;
-
-      let path = svg.querySelector('#line-' + item.id);
-      if (!path) {
-        path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        path.id = 'line-' + item.id;
-        path.setAttribute('stroke', '#000');
-        path.setAttribute('stroke-width', '1.5');
-        path.setAttribute('fill', 'none');
-        path.setAttribute('stroke-linecap', 'round');
-        path.setAttribute('stroke-linejoin', 'round');
-        path.setAttribute('marker-end', 'url(#arrowhead)');
-        svg.appendChild(path);
-      }
-      path.setAttribute('d', d);
+   function updateLine() {
+      const r = box.getBoundingClientRect();
+      const b = { x: item.lx / 100 * docW, y: item.ly / 100 * docH, w: r.width / zoomLevel, h: r.height / zoomLevel };
+      drawSvgArrow(svg, 'line-' + item.id, labelArrowGeom(item, b, docW, docH), zoomLevel);
     }
     item._updateLine = updateLine;
     updateLine();
@@ -555,7 +700,7 @@
       item.lx = clamp(orig.lx + (pt.x - start.x) / rect.width * 100);
       item.ly = clamp(orig.ly + (pt.y - start.y) / rect.height * 100);
       box.style.left = item.lx + '%'; box.style.top = item.ly + '%';
-      item._updateLine();
+      if (item._updateLine) item._updateLine();
     }
     function onUp() {
       document.removeEventListener('mousemove', onMove);
@@ -623,17 +768,6 @@
     ctx.closePath();
   }
 
-  function drawArrowheadCanvas(ctx, fromX, fromY, toX, toY, size, color) {
-    const angle = Math.atan2(toY - fromY, toX - fromX);
-    ctx.beginPath();
-    ctx.moveTo(toX, toY);
-    ctx.lineTo(toX - size * Math.cos(angle - Math.PI / 7), toY - size * Math.sin(angle - Math.PI / 7));
-    ctx.lineTo(toX - size * Math.cos(angle + Math.PI / 7), toY - size * Math.sin(angle + Math.PI / 7));
-    ctx.closePath();
-    ctx.fillStyle = color;
-    ctx.fill();
-  }
-
   function wrapTextCanvas(ctx, text, maxWidth) {
     const words = text.split(/\s+/).filter(Boolean);
     if (!words.length) return [''];
@@ -652,125 +786,105 @@
     return lines;
   }
 
-  function buildExportCanvas(sourceImg, labelsArr) {
-    const canvas = document.createElement('canvas');
-    canvas.width = sourceImg.naturalWidth || sourceImg.width;
-    canvas.height = sourceImg.naturalHeight || sourceImg.height;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(sourceImg, 0, 0, canvas.width, canvas.height);
+  function drawTextLines(ctx, lines, x, y, fs, lineH, weight, underline) {
+    const m = fontMetrics(weight, fs);
+    ctx.font = fontStr(weight, fs);
+    ctx.textBaseline = 'alphabetic';
+    ctx.textAlign = 'left';
+    lines.forEach((l, i) => {
+      const base = y + i * fs * lineH + (fs * lineH - (m.asc + m.desc)) / 2 + m.asc;
+      ctx.fillText(l, x, base);
+      if (underline) ctx.fillRect(x, base + m.desc, ctx.measureText(l).width, underline);
+    });
+  }
 
-    // Logo en haut à gauche, opaque, avec ombre portée
+  function computeLabelLayout(ctx, item, dW) {
+    const fs = labelFs(item);
+    ctx.font = fontStr(700, fs);
+    const padX = fs * LBL.padX, padY = fs * LBL.padY;
+    const text = (item.text || '').replace(/\s+/g, ' ').trim();
+    const boxW = Math.min(ctx.measureText(text).width + padX * 2, labelMaxW(fs, dW));
+    const lines = wrapTextCanvas(ctx, text, boxW - padX * 2 + 0.01);
+    return { fs, padX, padY, boxW, boxH: lines.length * fs * LBL.lineH + padY * 2, lines };
+  }
+  function domLabelLayout(item) {
+    const box = wrap.querySelector('.label-box[data-id="' + item.id + '"]');
+    if (!box || !zoomLevel) return null;
+    const t = box.querySelector('.label-text');
+    const r = box.getBoundingClientRect();
+    if (!t || !r.width) return null;
+    const fs = labelFs(item);
+    return { fs, padX: fs * LBL.padX, padY: fs * LBL.padY, boxW: r.width / zoomLevel, boxH: r.height / zoomLevel, lines: domLines(t, fs * zoomLevel) };
+  }
+
+  function buildExportCanvas(source, labelsArr, dW, dH, useDom) {
+    const srcW = source.naturalWidth || source.width;
+    let s = Math.max(1, srcW / dW, 3000 / Math.max(dW, dH));
+    s = Math.min(s, Math.sqrt(MAX_CANVAS_PX / (dW * dH)));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(dW * s);
+    canvas.height = Math.round(dH * s);
+    canvas.docW = dW; canvas.docH = dH;
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+    ctx.setTransform(canvas.width / dW, 0, 0, canvas.height / dH, 0, 0);
+
     if (exportLogo.complete && exportLogo.naturalWidth) {
-      const logoSize = canvas.width * 0.05;
-      const margin = canvas.width * 0.02;
+      const logoSize = dW * 0.05;
+      const margin = dW * 0.02;
       ctx.save();
       ctx.shadowColor = 'rgba(0,0,0,0.25)';
-      ctx.shadowBlur = logoSize * 0.18;
-      ctx.shadowOffsetX = 0;
-      ctx.shadowOffsetY = logoSize * 0.05;
+      ctx.shadowBlur = logoSize * 0.18 * s;
+      ctx.shadowOffsetY = logoSize * 0.05 * s;
       ctx.drawImage(exportLogo, margin, margin, logoSize, logoSize);
       ctx.restore();
     }
 
-        const defaultFontSize = 13;
-    const maxLabelWidth = canvas.width * 0.18;
-    const arrowSize = Math.max(5, canvas.width * 0.005);
-    const lineWidth = Math.max(1.5, canvas.width * 0.0016);
-    const elbowOffset = Math.max(15, canvas.width * 0.012);
-
     labelsArr.forEach(item => {
-      const lx = item.lx / 100 * canvas.width, ly = item.ly / 100 * canvas.height;
+      const lx = item.lx / 100 * dW, ly = item.ly / 100 * dH;
+
       if (item.type === 'repere') {
-        const size = canvas.width * 0.035;
-        const repFontSize = Math.max(11, canvas.width * 0.009);
-        const dirs = { ul:['up','left'], ur:['up','right'], dl:['down','left'], dr:['down','right'] };
-        const [d1, d2] = dirs[item.key] || ['up','right'];
-        const isUp = d1 === 'up';
-        const isRight = d2 === 'right';
-        const ox = lx, oy = ly;
-        const vx = ox, vy = isUp ? oy - size : oy + size;
-        const hx = isRight ? ox + size : ox - size, hy = oy;
-
-        ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-        ctx.strokeStyle = '#000'; ctx.lineWidth = lineWidth;
-        ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(vx, vy); ctx.stroke();
-        drawArrowheadCanvas(ctx, ox, oy, vx, vy, arrowSize, '#000');
-        ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(hx, hy); ctx.stroke();
-        drawArrowheadCanvas(ctx, ox, oy, hx, hy, arrowSize, '#000');
-
-        ctx.font = '700 ' + repFontSize + 'px -apple-system, Arial, sans-serif';
+        const g = repereGeom(item, lx, ly);
+        drawCanvasArrow(ctx, g.arrow);
+        ctx.font = fontStr(700, g.fs);
         ctx.fillStyle = '#111';
-        ctx.textBaseline = isUp ? 'bottom' : 'top';
-        ctx.textAlign = 'center';
-        ctx.fillText(item.label1 || '', vx, isUp ? vy - 4 : vy + 4);
-        ctx.textBaseline = 'middle';
-        ctx.textAlign = isRight ? 'left' : 'right';
-        ctx.fillText(item.label2 || '', isRight ? hx + 6 : hx - 6, hy);
+        ctx.textBaseline = 'alphabetic';
+        g.texts.forEach(t => {
+          ctx.textAlign = t.anchor === 'middle' ? 'center' : (t.anchor === 'start' ? 'left' : 'right');
+          ctx.fillText(t.text, t.x, t.y);
+        });
         ctx.textAlign = 'left';
         return;
       }
 
-              if (item.type === 'title') {
-        const titleFontSize = Math.round(item.fontSize || 15);
-        ctx.font = '800 ' + titleFontSize + 'px -apple-system, Arial, sans-serif';
+      if (item.type === 'title') {
+        const fs = titleFs(item);
+        const text = (item.text || '').replace(/\s+/g, ' ').trim().toUpperCase();
+        let lines = null;
+        if (useDom) {
+          const t = wrap.querySelector('.label-box[data-id="' + item.id + '"] .label-text');
+          if (t) lines = domLines(t, fs * zoomLevel).map(l => l.toUpperCase());
+        }
+        if (!lines) {
+          ctx.font = fontStr(800, fs);
+          lines = wrapTextCanvas(ctx, text, Math.min(ctx.measureText(text).width, dW * 0.9) + 0.01);
+        }
         ctx.fillStyle = '#0d3d45';
-        ctx.textBaseline = 'top';
-        const maxTitleWidth = canvas.width * 0.9;
-        const titleLines = wrapTextCanvas(ctx, (item.text || '').toUpperCase(), maxTitleWidth);
-        const titleLineHeight = titleFontSize * 1.25;
-        let maxLineW = 0;
-        titleLines.forEach((line, i) => {
-          ctx.fillText(line, lx, ly + i * titleLineHeight);
-          maxLineW = Math.max(maxLineW, ctx.measureText(line).width);
-        });
-        const underlineY = ly + (titleLines.length - 1) * titleLineHeight + titleFontSize * 1.1;
-        ctx.strokeStyle = '#0d3d45';
-        ctx.lineWidth = Math.max(1, titleFontSize * 0.06);
-        ctx.beginPath();
-        ctx.moveTo(lx, underlineY);
-        ctx.lineTo(lx + maxLineW, underlineY);
-        ctx.stroke();
+        drawTextLines(ctx, lines, lx, ly, fs, TITLE_LINE_H, 800, Math.max(1, fs * 0.06));
         return;
       }
-            const tx = item.tx / 100 * canvas.width, ty = item.ty / 100 * canvas.height;
-      const fontSize = Math.round(item.fontSize || defaultFontSize);
-      const lineHeight = fontSize * 1.35;
-      const padX = fontSize * 0.55, padY = fontSize * 0.5;
 
-      ctx.font = '700 ' + fontSize + 'px -apple-system, Arial, sans-serif';
-      const lines = wrapTextCanvas(ctx, item.text || '', maxLabelWidth);
-      const textWidths = lines.map(l => ctx.measureText(l).width);
-      const boxW = Math.min(maxLabelWidth, Math.max(...textWidths)) + padX * 2;
-      const boxH = lines.length * lineHeight + padY * 2 - (lineHeight - fontSize);
-
-            const cx = lx + boxW / 2, cy = ly + boxH / 2;
-      const exitRight = tx >= cx;
-      const ex = exitRight ? cx + boxW / 2 : cx - boxW / 2;
-      const ey = cy + fontSize * 0.15;
-      const elbowX = exitRight ? ex + elbowOffset : ex - elbowOffset;
-      const elbowY = ey;
-      
-      // Flèche coudée noire
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      ctx.strokeStyle = '#000';
-      ctx.lineWidth = lineWidth;
-      ctx.beginPath();
-      ctx.moveTo(ex, ey);
-      ctx.lineTo(elbowX, elbowY);
-      ctx.lineTo(tx, ty);
-      ctx.stroke();
-      drawArrowheadCanvas(ctx, elbowX, elbowY, tx, ty, arrowSize, '#000');
-
-      // Boîte sans bordure — fond blanc uniquement
+      const L = (useDom && domLabelLayout(item)) || computeLabelLayout(ctx, item, dW);
+      drawCanvasArrow(ctx, labelArrowGeom(item, { x: lx, y: ly, w: L.boxW, h: L.boxH }, dW, dH));
       ctx.fillStyle = '#ffffff';
-      roundRectPath(ctx, lx, ly, boxW, boxH, fontSize * 0.4);
+      roundRectPath(ctx, lx, ly, L.boxW, L.boxH, Math.min(L.fs * LBL.radius, L.boxH / 2));
       ctx.fill();
-
-      ctx.font = '700 ' + fontSize + 'px -apple-system, Arial, sans-serif';
       ctx.fillStyle = '#111';
-      ctx.textBaseline = 'top';
-      lines.forEach((l, i) => ctx.fillText(l, lx + padX, ly + padY + i * lineHeight));
+      drawTextLines(ctx, L.lines, lx + L.padX, ly + L.padY, L.fs, LBL.lineH, 700, 0);
     });
 
     return canvas;
@@ -810,7 +924,6 @@
       if (pdfDoc && pdfDoc.numPages > 1) {
         pagesData[pdfPageNum] = labels;
         for (let p = 1; p <= pdfDoc.numPages; p++) {
-          exportBtn.textContent = 'Préparation page ' + p + ' / ' + pdfDoc.numPages + '…';
           const sourceCanvas = (p === pdfPageNum) ? img : await renderPdfPageToCanvas(p, 1);
           const pageLabels = pagesData[p] || [];
           canvases.push(buildExportCanvas(sourceCanvas, pageLabels));
@@ -833,17 +946,14 @@
       previewModal.querySelector('#preview-cancel').onclick = () => { previewModal.style.display = 'none'; exportBtn.disabled = false; exportBtn.textContent = oldLabel; };
             previewModal.querySelector('#preview-confirm').onclick = () => {
         const { jsPDF } = window.jspdf;
-        const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-        const pageW = pdf.internal.pageSize.getWidth();
-        const pageH = pdf.internal.pageSize.getHeight();
+        const pw = c => c.docW * 0.75, ph = c => c.docH * 0.75;
+        const orient = c => pw(c) > ph(c) ? 'landscape' : 'portrait';
+        const pdf = new jsPDF({ unit: 'pt', format: [pw(canvases[0]), ph(canvases[0])], orientation: orient(canvases[0]), compress: true });
         canvases.forEach((c, i) => {
-          if (i > 0) pdf.addPage('a4', 'landscape');
-          const ratio = Math.min(pageW / c.width, pageH / c.height);
-          const w = c.width * ratio, h = c.height * ratio;
-          const x = (pageW - w) / 2, y = (pageH - h) / 2;
-          pdf.addImage(c.toDataURL('image/jpeg', 0.92), 'JPEG', x, y, w, h);
+          if (i > 0) pdf.addPage([pw(c), ph(c)], orient(c));
+          pdf.addImage(c.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, pw(c), ph(c), undefined, 'NONE');
         });
-        pdf.save('schemas-annotes.pdf');
+        pdf.save((importedFileName || 'schemas') + '-annote.pdf');
         previewModal.style.display = 'none';
         if (window._deleteStorage) window._deleteStorage();
         exportBtn.disabled = false;
@@ -861,7 +971,7 @@
   document.getElementById('title-btn').addEventListener('click', () => {
     saveHistory();
     const id = 'l' + (idCounter++);
-    labels.push({ id, lx: 30, ly: 2, text: 'TITRE', type: 'title', fontSize: labelFontSize });
+    labels.push({ id, lx: 30, ly: 2, text: 'TITRE', type: 'title', fontSize: Math.round(labelFontSize * 1.4) });
     renderAll();
   });
 
@@ -911,7 +1021,7 @@
     const l2 = repereModal.querySelector('#rep-label2').value || '';
     saveHistory();
     const id = 'l' + (idCounter++);
-    labels.push({ id, lx: 5, ly: 5, type: 'repere', key: selectedRepereKey, label1: l1, label2: l2 });
+    labels.push({ id, lx: 8, ly: 12, type: 'repere', key: selectedRepereKey || 'ur', label1: l1, label2: l2, fontSize: labelFontSize });
     renderAll();
     repereModal.style.display = 'none';
   });
@@ -925,43 +1035,46 @@
     repereModal.style.display = 'flex';
   });
 
-  function renderRepere(item) {
-    const size = 60;
-    const fontSize = 11;
+    function renderRepere(item) {
+    const z = zoomLevel;
     const el = document.createElement('div');
     el.dataset.id = item.id;
     el.className = 'label-box';
-    el.style.cssText = `left:${item.lx}%;top:${item.ly}%;padding:4px;background:transparent;min-width:${size+30}px;`;
+    el.style.cssText = `left:${item.lx}%;top:${item.ly}%;width:0;height:0;padding:0;background:transparent;max-width:none;`;
 
+    const g = repereGeom(item, 0, 0);
+    const svgEl = document.createElementNS(SVG_NS, 'svg');
+    svgEl.setAttribute('width', '1'); svgEl.setAttribute('height', '1');
+    svgEl.setAttribute('overflow', 'visible');
+    svgEl.style.cssText = 'position:absolute;left:0;top:0;overflow:visible;pointer-events:none;';
+    drawSvgArrow(svgEl, null, g.arrow, z);
+    g.texts.forEach(t => {
+      const te = document.createElementNS(SVG_NS, 'text');
+      te.setAttribute('x', t.x * z); te.setAttribute('y', t.y * z);
+      te.setAttribute('text-anchor', t.anchor);
+      te.setAttribute('font-size', g.fs * z);
+      te.setAttribute('font-weight', '700');
+      te.setAttribute('font-family', LABEL_FONT);
+      te.setAttribute('fill', '#111');
+      te.textContent = t.text;
+      svgEl.appendChild(te);
+    });
+
+    const gx = g.isRight ? -24 : 8, gy = g.isUp ? 8 : -24;
     const grip = document.createElement('div');
     grip.className = 'grip no-print';
     grip.textContent = '✥';
-    grip.style.cssText = 'position:absolute;left:0;top:0;width:16px;height:16px;border-radius:4px;background:var(--teal);color:white;font-size:10px;display:flex;align-items:center;justify-content:center;cursor:move;touch-action:none;z-index:2;';
+    grip.title = 'Déplacer';
+    grip.style.cssText = `left:${gx}px;top:${gy}px;z-index:2;`;
 
     const del = document.createElement('div');
     del.className = 'del no-print';
     del.textContent = '✕';
+    del.style.cssText = `left:${gx + 18}px;top:${gy}px;right:auto;`;
 
-    const dirs = { ul:['up','left'], ur:['up','right'], dl:['down','left'], dr:['down','right'] };
-    const [d1, d2] = dirs[item.key] || ['up','right'];
-    const isUp = d1 === 'up';
-    const isRight = d2 === 'right';
-    const ox = isRight ? 0 : size;
-    const oy = isUp ? size : 0;
-    const svgEl = document.createElementNS('http://www.w3.org/2000/svg','svg');
-    svgEl.setAttribute('width', size + 50);
-    svgEl.setAttribute('height', size + 30);
-    svgEl.setAttribute('overflow', 'visible');
-    svgEl.style.marginLeft = '18px';
-    svgEl.innerHTML = `<defs><marker id="rh${item.id}" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#000"/></marker></defs>
-      <line x1="${ox}" y1="${oy}" x2="${ox}" y2="${isUp ? 4 : size-4}" stroke="#000" stroke-width="1.5" marker-end="url(#rh${item.id})"/>
-      <line x1="${ox}" y1="${oy}" x2="${isRight ? size-4 : 4}" y2="${oy}" stroke="#000" stroke-width="1.5" marker-end="url(#rh${item.id})"/>
-      <text x="${ox}" y="${isUp ? 0 : size+14}" text-anchor="middle" font-size="${fontSize}" font-family="Arial" font-weight="700">${item.label1}</text>
-      <text x="${isRight ? size+2 : -2}" y="${oy+4}" text-anchor="${isRight ? 'start' : 'end'}" font-size="${fontSize}" font-family="Arial" font-weight="700">${item.label2}</text>`;
-
+    el.appendChild(svgEl);
     el.appendChild(grip);
     el.appendChild(del);
-    el.appendChild(svgEl);
     wrap.appendChild(el);
 
     del.addEventListener('click', e => {
@@ -970,21 +1083,8 @@
       labels = labels.filter(l => l.id !== item.id);
       el.remove();
     });
-
-    const rect = wrap.getBoundingClientRect();
-    grip.addEventListener('mousedown', e => {
-      e.preventDefault(); e.stopPropagation();
-      const start = { x: e.clientX, y: e.clientY };
-      const orig = { lx: item.lx, ly: item.ly };
-      function onMove(ev) {
-        item.lx = Math.min(99, Math.max(0, orig.lx + (ev.clientX - start.x) / wrap.getBoundingClientRect().width * 100));
-        item.ly = Math.min(99, Math.max(0, orig.ly + (ev.clientY - start.y) / wrap.getBoundingClientRect().height * 100));
-        el.style.left = item.lx + '%'; el.style.top = item.ly + '%';
-      }
-      function onUp() { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); }
-      document.addEventListener('mousemove', onMove);
-      document.addEventListener('mouseup', onUp);
-    });
+    grip.addEventListener('mousedown', e => startDragLabel(e, item, el));
+    grip.addEventListener('touchstart', e => startDragLabel(e, item, el), {passive: false});
   }
 
   // ── TITRE (rendu spécial dans renderLabel) ──────────────
@@ -1008,7 +1108,6 @@ function renderTitle(item) {
     box.style.top = item.ly + '%';
     box.style.background = 'transparent';
     box.style.padding = '0';
-    box.style.maxWidth = '90%';
     box.style.width = 'max-content';
 
     const grip = document.createElement('div');
@@ -1020,16 +1119,16 @@ function renderTitle(item) {
     del.className = 'del no-print'; del.textContent = '✕';
     box.appendChild(del);
 
-    const textEl = document.createElement('div');
+    const textEl = document.createElement('span');
     textEl.className = 'label-text';
     textEl.contentEditable = 'true';
     textEl.textContent = item.text;
+    textEl.style.display = 'inline';
     textEl.style.textTransform = 'uppercase';
-    textEl.style.textDecoration = 'underline';
-    textEl.style.fontSize = (item.fontSize || 15) * zoomLevel + 'px';
-    textEl.style.fontWeight = '800';
     textEl.style.color = '#0d3d45';
+    if (!item.fontSize) item.fontSize = titleFs(item);
     box.appendChild(textEl);
+    applyTitleStyle(box, textEl, item);
 
     const incr = document.createElement('div');
     incr.className = 'del no-print';
@@ -1040,8 +1139,9 @@ function renderTitle(item) {
     incr.addEventListener('click', e => {
       e.stopPropagation();
       saveHistory();
-      item.fontSize = Math.min(48, (item.fontSize || 15) + 2);
-      textEl.style.fontSize = item.fontSize * zoomLevel + 'px';
+      const fs = titleFs(item);
+      item.fontSize = Math.min(500, fs + Math.max(1, Math.round(fs * 0.1)));
+      applyTitleStyle(box, textEl, item);
     });
 
     const decr = document.createElement('div');
@@ -1053,8 +1153,9 @@ function renderTitle(item) {
     decr.addEventListener('click', e => {
       e.stopPropagation();
       saveHistory();
-      item.fontSize = Math.max(10, (item.fontSize || 15) - 2);
-      textEl.style.fontSize = item.fontSize * zoomLevel + 'px';
+      const fs = titleFs(item);
+      item.fontSize = Math.max(8, fs - Math.max(1, Math.round(fs * 0.1)));
+      applyTitleStyle(box, textEl, item);
     });
 
     textEl.addEventListener('input', () => { item.text = textEl.textContent; });
@@ -1077,20 +1178,31 @@ function renderTitle(item) {
  // ── ZOOM ─────────────────────────────────────────────
   let zoomLevel = 1;
   const zoomLevelLabel = document.getElementById('zoom-level');
-  function applyZoom() {
-    const w = img.naturalWidth * zoomLevel;
+    function applyZoom() {
+    if (!docW) return;
+    const w = docW * zoomLevel;
     img.style.width = w + 'px';
+    img.style.height = (docH * zoomLevel) + 'px';
     wrap.style.width = w + 'px';
     zoomLevelLabel.textContent = Math.round(zoomLevel * 100) + '%';
     renderAll();
   }
   function resetZoom() {
-    const containerWidth = wrap.parentElement.clientWidth;
-    zoomLevel = Math.min(1, containerWidth / img.naturalWidth);
+    const parent = wrap.parentElement;
+    const cs = getComputedStyle(parent);
+    const containerWidth = parent.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    zoomLevel = Math.min(1, containerWidth / docW);
     applyZoom();
   }
-  document.getElementById('zoom-in-btn').addEventListener('click', () => { zoomLevel = Math.min(3, zoomLevel + 0.2); applyZoom(); });
-  document.getElementById('zoom-out-btn').addEventListener('click', () => { zoomLevel = Math.max(0.1, zoomLevel - 0.2); applyZoom(); });
+  function stepZoom(f) {
+    let zl = Math.min(4, Math.max(0.05, zoomLevel * f));
+    if (Math.abs(zl - 1) < 0.04) zl = 1;
+    zoomLevel = zl;
+    applyZoom();
+  }
+  document.getElementById('zoom-in-btn').addEventListener('click', () => stepZoom(1.25));
+  document.getElementById('zoom-out-btn').addEventListener('click', () => stepZoom(1 / 1.25));
+  zoomLevelLabel.addEventListener('click', () => { if (!docW) return; zoomLevel = 1; applyZoom(); });
   document.getElementById('zoom-reset-btn').addEventListener('click', resetZoom);
 
   // ── GLISSER POUR SE DÉPLACER ─────────────────────────────
@@ -1192,7 +1304,7 @@ function renderTitle(item) {
           const titleItem = pageLabels.find(l => l.type === 'title');
           const titre = titleItem ? titleItem.text : ('Schéma ' + p);
           const base = reserveName(slugify(titre));
-          const sourceCanvas = (p === pdfPageNum) ? img : await renderPdfPageToCanvas(p, 1);
+          const sourceCanvas = (p === pdfPageNum) ? img : (await renderPdfPageToCanvas(p)).canvas;
           const blank = blankCanvasFrom(sourceCanvas);
           zip.file(base + '.png', blank.toDataURL('image/png').split(',')[1], { base64: true });
           zip.file(base + '.json', JSON.stringify(buildRepereJSON(pageLabels, titre, base + '.png'), null, 2));
@@ -1243,7 +1355,7 @@ function renderTitle(item) {
 
   // Taille police
   const fontSizeSelect = document.getElementById('font-size-select');
-  fontSizeSelect.addEventListener('change', () => { labelFontSize = parseInt(fontSizeSelect.value); });
+  fontSizeSelect.addEventListener('change', () => { labelFontSize = Math.round(baseFontSize * parseFloat(fontSizeSelect.value)); });
 
   // Termes anatomiques
   const termsBtn = document.getElementById('terms-btn');
