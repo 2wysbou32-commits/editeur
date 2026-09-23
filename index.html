@@ -67,7 +67,7 @@
   .logo-zone { position: absolute; border: 2px dashed #ff5a5f; border-radius: 8px; background: rgba(255,90,95,0.08); pointer-events: none; display: none; }
 
   /* LABELS */
-  .label-box { position: absolute; box-sizing: border-box; width: max-content; background: white; }
+  .label-box { position: absolute; box-sizing: border-box; width: max-content; background: transparent; }
   .label-box .label-text { color: #111; cursor: text; outline: none; white-space: normal; overflow-wrap: normal; word-break: normal; }
   .label-box .grip { position: absolute; left: -21px; top: 0; width: 16px; height: 16px; border-radius: 4px; background: var(--teal); color: white; font-size: 10px; display: flex; align-items: center; justify-content: center; cursor: move; touch-action: none; }
   .label-box .del { position: absolute; top: -8px; right: -8px; width: 17px; height: 17px; border-radius: 50%; background: var(--red); color: white; font-size: 10px; line-height: 17px; text-align: center; cursor: pointer; }
@@ -192,6 +192,11 @@
   let idCounter = 0;
   function saveHistory() { history.push(JSON.stringify(labels)); if (history.length > 50) history.shift(); }
   let history = [];
+  // Demande confirmation avant de quitter la page si des annotations existent
+  window.addEventListener('beforeunload', e => {
+    const hasWork = labels.length || Object.values(pagesData).some(a => a && a.length);
+    if (hasWork) { e.preventDefault(); e.returnValue = ''; }
+  });
   let labelFontSize = 15;
   const TERMS = ['Aorte','Artère carotide','Artère fémorale','Artère radiale','Artère ulnaire','Cerveau','Cervelet','Côlon ascendant','Côlon descendant','Côlon sigmoïde','Diaphragme','Duodénum','Estomac','Fémur','Fibula','Foie','Humérus','Intestin grêle','Jéjunum','Ligament croisé antérieur','Ligament croisé postérieur','Lobe frontal','Lobe occipital','Lobe pariétal','Lobe temporal','Moelle épinière','Nerf cubital','Nerf médian','Nerf radial','Nerf sciatique','Oesophage','Os iliaque','Pancréas','Patella','Péroné','Processus xyphoïde','Pubis','Radius','Rate','Rectum','Rein gauche','Rein droit','Sacrum','Sternum','Tibia','Trachée','Ulna','Uretère','Utérus','Veine cave inférieure','Veine cave supérieure','Vésicule biliaire','Vessie'];
   let pdfDoc = null;
@@ -885,9 +890,6 @@
 
       const L = (useDom && domLabelLayout(item)) || computeLabelLayout(ctx, item, dW);
       drawCanvasArrow(ctx, labelArrowGeom(item, { x: lx, y: ly, w: L.boxW, h: L.boxH }, dW, dH));
-      ctx.fillStyle = '#ffffff';
-      roundRectPath(ctx, lx, ly, L.boxW, L.boxH, Math.min(L.fs * LBL.radius, L.boxH / 2));
-      ctx.fill();
       ctx.fillStyle = '#111';
       drawTextLines(ctx, L.lines, lx + L.padX, ly + L.padY, L.fs, LBL.lineH, 700, 0);
     });
@@ -962,9 +964,17 @@
           const w = c.docW * 0.75, h = c.docH * 0.75;
           pdf.addImage(c.toDataURL('image/jpeg', 0.95), 'JPEG', (pageW - w) / 2, (pageH - h) / 2, w, h, undefined, 'NONE');
         });
-        pdf.save((importedFileName || 'schemas') + '-annote.pdf');
+        const pdfUrl = URL.createObjectURL(pdf.output('blob'));
+        const dl = document.createElement('a');
+        dl.href = pdfUrl;
+        dl.download = (importedFileName || 'schemas') + '-annote.pdf';
+        dl.target = '_blank';
+        dl.rel = 'noopener';
+        document.body.appendChild(dl);
+        dl.click();
+        dl.remove();
+        setTimeout(() => URL.revokeObjectURL(pdfUrl), 60000);
         previewModal.style.display = 'none';
-        if (window._deleteStorage) window._deleteStorage();
         exportBtn.disabled = false;
         exportBtn.textContent = oldLabel;
       };
