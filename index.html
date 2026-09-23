@@ -929,13 +929,17 @@
       if (pdfDoc && pdfDoc.numPages > 1) {
         pagesData[pdfPageNum] = labels;
         for (let p = 1; p <= pdfDoc.numPages; p++) {
-          const sourceCanvas = (p === pdfPageNum) ? img : await renderPdfPageToCanvas(p, 1);
-          const pageLabels = pagesData[p] || [];
-          canvases.push(buildExportCanvas(sourceCanvas, pageLabels));
+          exportBtn.textContent = 'Préparation page ' + p + ' / ' + pdfDoc.numPages + '…';
+          if (p === pdfPageNum) {
+            canvases.push(buildExportCanvas(img, labels, docW, docH, true));
+          } else {
+            const r = await renderPdfPageToCanvas(p);
+            canvases.push(buildExportCanvas(r.canvas, pagesData[p] || [], r.docW, r.docH, false));
+          }
         }
       } else {
         exportBtn.textContent = 'Préparation…';
-        canvases.push(buildExportCanvas(img, labels));
+        canvases.push(buildExportCanvas(img, labels, docW, docH, true));
       }
 
       const thumbs = previewModal.querySelector('#preview-thumbs');
@@ -948,15 +952,15 @@
       });
       previewModal.style.display = 'flex';
 
+      previewModal.querySelector('#preview-cancel').onclick = () => { previewModal.style.display = 'none'; exportBtn.disabled = false; exportBtn.textContent = oldLabel; };
+      previewModal.querySelector('#preview-confirm').onclick = () => {
+        const { jsPDF } = window.jspdf;
         const pdf = new jsPDF({ unit: 'pt', format: 'a4', orientation: 'landscape', compress: true });
         const pageW = pdf.internal.pageSize.getWidth(), pageH = pdf.internal.pageSize.getHeight();
         canvases.forEach((c, i) => {
           if (i > 0) pdf.addPage('a4', 'landscape');
           const w = c.docW * 0.75, h = c.docH * 0.75;
           pdf.addImage(c.toDataURL('image/jpeg', 0.95), 'JPEG', (pageW - w) / 2, (pageH - h) / 2, w, h, undefined, 'NONE');
-        });
-          if (i > 0) pdf.addPage([pw(c), ph(c)], orient(c));
-          pdf.addImage(c.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, pw(c), ph(c), undefined, 'NONE');
         });
         pdf.save((importedFileName || 'schemas') + '-annote.pdf');
         previewModal.style.display = 'none';
