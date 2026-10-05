@@ -281,7 +281,6 @@
     const m = fontMetrics(700, fs);
     return {
       fs, isUp, isRight,
-      arrow: { lineW: a.lineW, pts: [h1.lineEnd, [ox, oy], h2.lineEnd], heads: [h1, h2] },
       arrow: { lineW: a.lineW, cap: 'round', pts: [h1.lineEnd, [ox, oy], h2.lineEnd], heads: [h1, h2] },
       texts: [
         { text: item.label1 || '', x: vx, y: isUp ? vy - gap - m.desc : vy + gap + m.asc, anchor: 'middle' },
@@ -1065,7 +1064,6 @@
         <input id="rep-label3" placeholder="Label flèche 3" style="flex:1;min-width:0;display:none;border:1px solid #cce8ec;border-radius:6px;padding:6px 8px;font-size:12px;">
       </div>
       <button id="repere-add" style="background:var(--teal);color:white;border:none;border-radius:8px;padding:8px 20px;font-size:13px;font-weight:600;cursor:pointer;width:100%;">Ajouter sur le schéma</button>
-    </div>
     </div>
   </div>`;
   document.body.appendChild(repereModal);
