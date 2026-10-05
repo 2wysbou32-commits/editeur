@@ -269,6 +269,9 @@
     const fs = item.fontSize || Math.max(11, Math.round(baseFontSize * 0.8));
     const a = arrowStyle(fs);
     const size = fs * 3.5, gap = fs * 0.35;
+      if (item.key === 'tripod_up' || item.key === 'tripod_down') {
+      return tripodGeom(item, ox, oy, fs, a, size, gap);
+    }
     const dirs = { ul:['up','left'], ur:['up','right'], dl:['down','left'], dr:['down','right'] };
     const [d1, d2] = dirs[item.key] || ['up','right'];
     const isUp = d1 === 'up', isRight = d2 === 'right';
@@ -279,12 +282,43 @@
     return {
       fs, isUp, isRight,
       arrow: { lineW: a.lineW, pts: [h1.lineEnd, [ox, oy], h2.lineEnd], heads: [h1, h2] },
+      arrow: { lineW: a.lineW, cap: 'round', pts: [h1.lineEnd, [ox, oy], h2.lineEnd], heads: [h1, h2] },
       texts: [
         { text: item.label1 || '', x: vx, y: isUp ? vy - gap - m.desc : vy + gap + m.asc, anchor: 'middle' },
         { text: item.label2 || '', x: isRight ? hx + gap : hx - gap, y: hy + (m.asc - m.desc) / 2, anchor: isRight ? 'start' : 'end' }
       ]
     };
   }
+
+    // Repère à 3 flèches (vues de 3/4) : une flèche principale (haut ou bas)
+  // et deux flèches diagonales à 120° de part et d'autre, comme un trépied.
+  function tripodGeom(item, ox, oy, fs, a, size, gap) {
+    const flip = item.key === 'tripod_down' ? -1 : 1;
+    const endpoint = angDeg => {
+      const r = angDeg * Math.PI / 180;
+      return [ox + Math.cos(r) * size, oy - Math.sin(r) * size * flip];
+    };
+    const p1 = endpoint(90), p2 = endpoint(210), p3 = endpoint(330);
+    const h1 = arrowHead(ox, oy, p1[0], p1[1], a);
+    const h2 = arrowHead(ox, oy, p2[0], p2[1], a);
+    const h3 = arrowHead(ox, oy, p3[0], p3[1], a);
+    const m = fontMetrics(700, fs);
+    const isUp = flip === 1;
+    return {
+      fs, isUp, isRight: true, isTripod: true,
+      arrow: {
+        lineW: a.lineW, cap: 'round',
+        segs: [[[ox, oy], h1.lineEnd], [[ox, oy], h2.lineEnd], [[ox, oy], h3.lineEnd]],
+        heads: [h1, h2, h3]
+      },
+      texts: [
+        { text: item.label1 || '', x: p1[0], y: isUp ? p1[1] - gap - m.desc : p1[1] + gap + m.asc, anchor: 'middle' },
+        { text: item.label2 || '', x: p2[0] - gap, y: p2[1] + (m.asc - m.desc) / 2, anchor: 'end' },
+        { text: item.label3 || '', x: p3[0] + gap, y: p3[1] + (m.asc - m.desc) / 2, anchor: 'start' }
+      ]
+    };
+  }
+  
   function drawSvgArrow(parent, id, g, z) {
     let grp = id ? parent.querySelector('#' + id) : null;
     if (!grp) {
@@ -297,7 +331,11 @@
       parent.appendChild(grp);
     }
     const p = grp.querySelector('path');
-    p.setAttribute('d', 'M ' + g.pts.map(q => (q[0] * z) + ',' + (q[1] * z)).join(' L '));
+    const d = g.segs
+      ? g.segs.map(seg => 'M ' + seg.map(q => (q[0] * z) + ',' + (q[1] * z)).join(' L ')).join(' ')
+      : 'M ' + g.pts.map(q => (q[0] * z) + ',' + (q[1] * z)).join(' L ');
+    p.setAttribute('d', d);
+    p.setAttribute('stroke-linecap', g.cap || 'butt');
     p.setAttribute('stroke-width', g.lineW * z);
     grp.querySelectorAll('polygon').forEach(el => el.remove());
     g.heads.forEach(h => {
@@ -311,9 +349,13 @@
   function drawCanvasArrow(ctx, g) {
     ctx.save();
     ctx.strokeStyle = '#000'; ctx.fillStyle = '#000';
-    ctx.lineWidth = g.lineW; ctx.lineCap = 'butt'; ctx.lineJoin = 'round';
+    ctx.lineWidth = g.lineW; ctx.lineCap = g.cap || 'butt'; ctx.lineJoin = 'round';
     ctx.beginPath();
-    g.pts.forEach((q, i) => i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]));
+    if (g.segs) {
+      g.segs.forEach(seg => seg.forEach((q, i) => i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])));
+    } else {
+      g.pts.forEach((q, i) => i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]));
+    }
     ctx.stroke();
     g.heads.forEach(h => {
       ctx.beginPath();
@@ -996,10 +1038,12 @@
 
   // ── REPÈRE ANATOMIQUE ───────────────────────────────────
   const REPERE_OPTIONS = [
-    { key: 'ul', arrows: ['up','left'],  labels: ['',''],  svg: '↑←' },
-    { key: 'ur', arrows: ['up','right'], labels: ['',''],  svg: '↑→' },
-    { key: 'dl', arrows: ['down','left'],  labels: ['',''], svg: '↓←' },
-    { key: 'dr', arrows: ['down','right'], labels: ['',''], svg: '↓→' },
+    { key: 'ul', n: 2, svg: '↑←' },
+    { key: 'ur', n: 2, svg: '↑→' },
+    { key: 'dl', n: 2, svg: '↓←' },
+    { key: 'dr', n: 2, svg: '↓→' },
+    { key: 'tripod_up',   n: 3, svg: '<div style="line-height:1.15"><div>↑</div><div style="font-size:14px">↙&nbsp;↘</div></div>' },
+    { key: 'tripod_down', n: 3, svg: '<div style="line-height:1.15"><div style="font-size:14px">↖&nbsp;↗</div><div>↓</div></div>' },
   ];
 
   const repereModal = document.createElement('div');
@@ -1010,15 +1054,18 @@
       <span id="repere-close" style="cursor:pointer;font-size:20px;color:#999;">✕</span>
     </div>
     <p style="font-size:12px;color:#666;margin-bottom:1rem;">Choisis l'orientation puis saisis les labels</p>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:1.2rem;">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:0.6rem;">
       ${REPERE_OPTIONS.map(o => `<button data-key="${o.key}" style="border:2px solid #cce8ec;border-radius:8px;padding:12px;font-size:22px;cursor:pointer;background:white;">${o.svg}</button>`).join('')}
     </div>
+    <p style="font-size:11px;color:#999;margin-bottom:1rem;">2 flèches pour une vue de face, 3 flèches pour une vue de 3/4</p>
     <div id="repere-labels" style="display:none;margin-bottom:1rem;">
       <div style="display:flex;gap:8px;margin-bottom:8px;">
-        <input id="rep-label1" placeholder="Label flèche 1 (ex: Sup)" style="flex:1;border:1px solid #cce8ec;border-radius:6px;padding:6px 8px;font-size:12px;">
-        <input id="rep-label2" placeholder="Label flèche 2 (ex: Droit)" style="flex:1;border:1px solid #cce8ec;border-radius:6px;padding:6px 8px;font-size:12px;">
+        <input id="rep-label1" placeholder="Label flèche 1 (ex: Sup)" style="flex:1;min-width:0;border:1px solid #cce8ec;border-radius:6px;padding:6px 8px;font-size:12px;">
+        <input id="rep-label2" placeholder="Label flèche 2 (ex: Droit)" style="flex:1;min-width:0;border:1px solid #cce8ec;border-radius:6px;padding:6px 8px;font-size:12px;">
+        <input id="rep-label3" placeholder="Label flèche 3" style="flex:1;min-width:0;display:none;border:1px solid #cce8ec;border-radius:6px;padding:6px 8px;font-size:12px;">
       </div>
       <button id="repere-add" style="background:var(--teal);color:white;border:none;border-radius:8px;padding:8px 20px;font-size:13px;font-weight:600;cursor:pointer;width:100%;">Ajouter sur le schéma</button>
+    </div>
     </div>
   </div>`;
   document.body.appendChild(repereModal);
@@ -1029,6 +1076,8 @@
       repereModal.querySelectorAll('[data-key]').forEach(b => b.style.borderColor = '#cce8ec');
       btn.style.borderColor = 'var(--teal)';
       selectedRepereKey = btn.dataset.key;
+      const opt = REPERE_OPTIONS.find(o => o.key === selectedRepereKey);
+      repereModal.querySelector('#rep-label3').style.display = (opt && opt.n === 3) ? 'block' : 'none';
       repereModal.querySelector('#repere-labels').style.display = 'block';
     });
   });
@@ -1038,6 +1087,7 @@
   repereModal.querySelector('#repere-add').addEventListener('click', () => {
     const l1 = repereModal.querySelector('#rep-label1').value || '';
     const l2 = repereModal.querySelector('#rep-label2').value || '';
+    const l3 = repereModal.querySelector('#rep-label3').value || '';
     saveHistory();
     const id = 'l' + (idCounter++);
     labels.push({ id, lx: 8, ly: 12, type: 'repere', key: selectedRepereKey || 'ur', label1: l1, label2: l2, fontSize: labelFontSize });
@@ -1051,6 +1101,8 @@
     repereModal.querySelector('#repere-labels').style.display = 'none';
     repereModal.querySelector('#rep-label1').value = '';
     repereModal.querySelector('#rep-label2').value = '';
+    repereModal.querySelector('#rep-label3').value = '';
+    repereModal.querySelector('#rep-label3').style.display = 'none';
     repereModal.style.display = 'flex';
   });
 
@@ -1079,7 +1131,7 @@
       svgEl.appendChild(te);
     });
 
-    const gx = g.isRight ? -24 : 8, gy = g.isUp ? 8 : -24;
+    const gx = g.isTripod ? -26 : (g.isRight ? -24 : 8), gy = g.isTripod ? -26 : (g.isUp ? 8 : -24);
     const grip = document.createElement('div');
     grip.className = 'grip no-print';
     grip.textContent = '✥';
