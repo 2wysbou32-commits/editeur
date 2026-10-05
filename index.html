@@ -1088,7 +1088,7 @@
     const l3 = repereModal.querySelector('#rep-label3').value || '';
     saveHistory();
     const id = 'l' + (idCounter++);
-    labels.push({ id, lx: 8, ly: 12, type: 'repere', key: selectedRepereKey || 'ur', label1: l1, label2: l2, fontSize: labelFontSize });
+        labels.push({ id, lx: 8, ly: 12, type: 'repere', key: selectedRepereKey || 'ur', label1: l1, label2: l2, label3: l3, fontSize: labelFontSize });
     renderAll();
     repereModal.style.display = 'none';
   });
